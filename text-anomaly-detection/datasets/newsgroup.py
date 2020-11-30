@@ -68,7 +68,7 @@ class NEWSGROUP_DATA:
         if tokenize == 'spacy':
             self.encoder = SpacyEncoder(text_corpus, min_occurrences=3, append_eos=False)
         if tokenize == 'bert':
-            self.encoder = util.MyBertTokenizer.from_pretrained('bert-base-uncased', cache_dir=root)
+            self.encoder = util.MyBertTokenizer.from_pretrained('bert-base-uncased', cache_dir='data/bert_cache')
 
         # Encode
         for row in datasets_iterator(self.train_set, self.valid_set, self.test_set):

@@ -16,6 +16,7 @@
     - GloVe_6B
     - bert-base-uncased
     - 更新及标准化嵌入
+    - berts使用需要限制文本输入序列长度不超过512，且需要减小batch_size；bert使用效果不佳
 - 文本表示
     - 嵌入均值
     - 嵌入最大值
