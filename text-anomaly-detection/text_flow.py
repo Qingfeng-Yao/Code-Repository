@@ -13,7 +13,7 @@ from torchnlp.word_to_vector import GloVe
 from torchtext.vocab import FastText
 
 import datasets
-from model import *
+from models import *
 
 ## 参数设置
 parser = argparse.ArgumentParser(description='pytorch text flow for anomaly detection')
@@ -132,12 +132,12 @@ if args.pretrain_model in ['GloVe_6B', 'FastText_en']:
         word_vectors = GloVe(name='6B', dim=300, cache='data/word_vectors_cache')
     if args.pretrain_model in ['FastText_en']:
         word_vectors = FastText(language='en', cache='data/word_vectors_cache')
-    embedding = MyEmbedding(dataset.encoder.vocab_size, 300, update_embedding=True, reduction='mean', use_tfidf_weights=args.use_tfidf_weights, normalize=True)
+    embedding = MyEmbedding(dataset.encoder.vocab_size, 300, update_embedding=True, reduction=args.embedding_reduction, use_tfidf_weights=args.use_tfidf_weights, normalize=True)
     # Init embedding with pre-trained word vectors
     for i, token in enumerate(dataset.encoder.vocab):
         embedding.weight.data[i] = word_vectors[token]
 if args.pretrain_model in ['bert']:
-    embedding = BERT(update_embedding=True, reduction='mean', use_tfidf_weights=args.use_tfidf_weights, normalize=True)
+    embedding = BERT(update_embedding=True, reduction=args.embedding_reduction, use_tfidf_weights=args.use_tfidf_weights, normalize=True)
 
 num_inputs = embedding.embedding_size
 num_hidden = {
