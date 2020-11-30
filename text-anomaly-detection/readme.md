@@ -6,7 +6,7 @@
     - 预处理后训练集：7769；测试集：3019
     - 只考虑单标签数据
 - 20 Newsgroups: 共6类 --> sklearn
-    - 预处理后训练集：；测试集：
+    - 预处理后训练集：10996；测试集：7299
 - 文本预处理：小写-->移除标点/数字/空格/停用词/长度小于3的词
 - torchnlp.datasets.dataset.Dataset-->torch.utils.data.DataLoader
 

@@ -108,8 +108,8 @@ def load_data():
                     'text': text,
                     'label': labels,
                 })
-    print("train {}".format(len(train_data)))
-    print("test {}".format(len(test_data)))
+    # print("train {}".format(len(train_data)))
+    # print("test {}".format(len(test_data)))
 
     N_validate = int(0.1 * len(train_data))
     data_validate = train_data[-N_validate:]

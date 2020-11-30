@@ -178,7 +178,7 @@ elif args.model == 'maf-split-glow':
 
 flows = FlowSequential(*modules)
 model = ReduceTextFlowModel(embedding, flows)
-print(model)
+# print(model)
 
 for module in model.modules():
     if isinstance(module, nn.Linear):
