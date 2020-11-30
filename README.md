@@ -1,0 +1,16 @@
+## 神经网络训练流程(pytorch)
+- 参数设置
+  - CPU/GPU：注意在GPU设置下，要将model和所有迭代中的数据都放到GPU上，有时包括新生成的数据
+  - seed
+  - dataset/batch_size
+  - model/blocks/lr
+  - epoch：引入验证集实现early stop
+- 数据下载
+  - 创建一个datasets目录(包)，下含的每一个文件定义一个数据类，通常以9:1划分训练集和测试集，然后再以9:1划分训练集和验证集
+- 模型及优化器
+  - 一般需要在定义模型之前确定输入维数/隐含维数
+  - 定义模型：modules-->block-->nn.Module-->model/nn.Sequential-->forward/遍历modules
+- 训练及测试
+  - 训练迭代之前设置验证相关参数：loss，epoch，model
+  - 迭代训练集：epoch-->loader-->optimizer_zero_grad()-->forward-->loss.backward()-->optimizer.step()
+  - 测试：传入最优模型-->迭代loader-->with torch.no_grad()-->forward
