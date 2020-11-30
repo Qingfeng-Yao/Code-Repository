@@ -10,6 +10,7 @@
 - 模型及优化器
   - 一般需要在定义模型之前确定输入维数/隐含维数
   - 定义模型：modules-->block-->nn.Module-->model/nn.Sequential-->forward/遍历modules
+  - 优化器设置之前需要过滤参数
 - 训练及测试
   - 训练迭代之前设置验证相关参数：loss，epoch，model
   - 迭代训练集：epoch-->loader-->optimizer_zero_grad()-->forward-->loss.backward()-->optimizer.step()
