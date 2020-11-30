@@ -1,0 +1,9 @@
+tqdm==4.54.0
+pytorch_nlp==0.4.1
+torchtext==0.6.0
+pytorch_pretrained_bert==0.6.1
+numpy==1.17.0
+torch==1.7.0+cu101
+nltk==3.4.4
+scikit_learn==0.23.2
+torchnlp==0.0.0.1
