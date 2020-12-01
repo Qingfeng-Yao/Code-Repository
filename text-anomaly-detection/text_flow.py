@@ -27,7 +27,7 @@ parser.add_argument(
 parser.add_argument(
     '--dataset',
     default='REUTERS_DATA',
-    help='REUTERS_DATA | NEWSGROUP_DATA')
+    help='REUTERS_DATA | NEWSGROUP_DATA | IMDB_DATA')
 parser.add_argument(
     '--normal_class', 
     type=int, 

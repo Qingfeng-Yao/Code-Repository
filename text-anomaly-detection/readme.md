@@ -7,6 +7,8 @@
     - 只考虑单标签数据
 - 20 Newsgroups: 共6类 --> sklearn
     - 预处理后训练集：10996；测试集：7299
+- IMDB: 共2类 --> torchnlp
+    - 预处理后训练集：25000；测试集：25000
 - 文本预处理：小写-->移除标点/数字/空格/停用词/长度小于3的词
 - torchnlp.datasets.dataset.Dataset-->torch.utils.data.DataLoader
 - 预训练模型
