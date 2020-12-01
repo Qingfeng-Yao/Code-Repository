@@ -24,11 +24,15 @@ parser.add_argument(
     default=False,
     help='disables cuda training')
 parser.add_argument(
+    '--cuda-device',
+    default='cuda:0',
+    help='cuda:0 | ...')
+parser.add_argument(
     '--seed', type=int, default=1, help='random seed')
 parser.add_argument(
     '--dataset',
     default='REUTERS_DATA',
-    help='REUTERS_DATA | NEWSGROUP_DATA')
+    help='REUTERS_DATA | NEWSGROUP_DATA | IMDB_DATA')
 parser.add_argument(
     '--normal_class', 
     type=int, 
@@ -92,7 +96,7 @@ parser.add_argument(
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
-device = torch.device("cuda:1" if args.cuda else "cpu")
+device = torch.device(args.cuda_device if args.cuda else "cpu")
 
 random.seed(args.seed)
 np.random.seed(args.seed)

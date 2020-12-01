@@ -23,6 +23,10 @@ parser.add_argument(
     default=False,
     help='disables cuda training')
 parser.add_argument(
+    '--device',
+    default='cuda:0',
+    help='cuda:0 | ...')
+parser.add_argument(
     '--seed', type=int, default=1, help='random seed')
 parser.add_argument(
     '--dataset',
@@ -77,7 +81,7 @@ parser.add_argument(
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
-device = torch.device("cuda:1" if args.cuda else "cpu")
+device = torch.device(args.cuda_device if args.cuda else "cpu")
 
 random.seed(args.seed)
 np.random.seed(args.seed)
@@ -140,10 +144,7 @@ if args.pretrain_model in ['bert']:
     embedding = BERT(update_embedding=True, reduction=args.embedding_reduction, use_tfidf_weights=args.use_tfidf_weights, normalize=True)
 
 num_inputs = embedding.embedding_size
-num_hidden = {
-    'REUTERS_DATA': 1024,
-    'NEWSGROUP_DATA': 1024
-}[args.dataset]
+num_hidden = 1024
 act = 'relu'
 
 num_cond_inputs = None
