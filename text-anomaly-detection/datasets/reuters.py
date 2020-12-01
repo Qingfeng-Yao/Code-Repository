@@ -7,6 +7,7 @@ from torchnlp.utils import datasets_iterator
 
 import nltk
 from nltk.corpus import reuters
+import numpy as np
 
 import datasets
 from . import util
@@ -107,6 +108,10 @@ def load_data():
                 })
     # print("train {}".format(len(train_data)))
     # print("test {}".format(len(test_data)))
+
+    rng = np.random.RandomState(42)
+    train_data = np.array(train_data)
+    rng.shuffle(train_data)
 
     N_validate = int(0.1 * len(train_data))
     data_validate = train_data[-N_validate:]
