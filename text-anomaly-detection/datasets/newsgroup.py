@@ -85,8 +85,8 @@ class NEWSGROUP_DATA:
 
 def load_data():
     directory = datasets.root + 'newsgroup/'
-    if directory not in nltk.data.path:
-        nltk.data.path.append(directory)
+    if datasets.root not in nltk.data.path:
+        nltk.data.path.append(datasets.root)
 
     train_data = []
     test_data = []
