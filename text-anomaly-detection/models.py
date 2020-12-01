@@ -502,4 +502,32 @@ class LSTMTextFlowModel(nn.Module):
 
         return log_probs
 
+class AttentionTextFlowModel(nn.Module):
+    def __init__(self, pretrained_model, flows):
+        super().__init__()
+
+        self.pretrained_model = pretrained_model
+        self.hidden_size = pretrained_model.embedding_size
+
+        self.self_attention = SelfAttention(hidden_size=self.hidden_size,
+                                            attention_size=150,
+                                            n_attention_heads=3)
+
+        self.flows = flows
+
+    def forward(self, x, weights=None):
+        # x.shape = (sentence_length, batch_size)
+        # weights.shape = (sentence_length, batch_size)
+
+        hidden = self.pretrained_model(x)
+        # hidden.shape = (sentence_length, batch_size, hidden_size)
+        M, _ = self.self_attention(hidden)
+        # M.shape = (batch_size, n_attention_heads, hidden_size)
+
+        embedded = torch.mean(M, dim=1)
+
+        log_probs = self.flows.log_probs(embedded)
+
+        return log_probs
+
 ## -----------------

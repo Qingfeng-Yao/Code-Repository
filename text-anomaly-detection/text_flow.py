@@ -73,8 +73,8 @@ parser.add_argument(
     help='mean | max | none')
 parser.add_argument(
     '--text_embedding',
-    default='lstm',
-    help='lstm')
+    default='attention',
+    help='attention | lstm')
 parser.add_argument(
     '--lr', type=float, default=0.0001, help='learning rate')
 parser.add_argument(
@@ -183,7 +183,9 @@ elif args.model == 'maf-split-glow':
 
 flows = FlowSequential(*modules)
 if args.embedding_reduction == 'none':
-    if args.text_embedding == 'lstm':
+    if args.text_embedding == 'attention':
+        model = AttentionTextFlowModel(embedding, flows)
+    elif args.text_embedding == 'lstm':
         model = LSTMTextFlowModel(embedding, flows)
 else:
     model = ReduceTextFlowModel(embedding, flows)
