@@ -469,4 +469,37 @@ class CVDDNet(nn.Module):
 
         return cosine_dists, context_weights, A
 
+class LSTMTextFlowModel(nn.Module):
+    def __init__(self, pretrained_model, flows):
+        super().__init__()
+
+        self.pretrained_model = pretrained_model
+        self.embedding_dim = pretrained_model.embedding_size
+
+        self.hidden_size = 512
+        self.lstm = nn.LSTM(input_size=self.embedding_dim, hidden_size=self.hidden_size)
+        self.W = nn.Linear(self.hidden_size, self.embedding_dim, bias=False)
+        self.b = nn.Parameter(torch.ones([self.embedding_dim]))
+
+        self.flows = flows
+
+    def forward(self, x, weights=None):
+        # x.shape = (sentence_length, batch_size)
+        # weights.shape = (sentence_length, batch_size)
+
+        input = self.pretrained_model(x)
+        # input.shape = (sentence_length, batch_size, embedding_dim)
+
+        hidden_state = torch.zeros(1, x.shape[1], self.hidden_size).to(x.device)  # [num_layers(=1) * num_directions(=1), batch_size, n_hidden]
+        cell_state = torch.zeros(1, x.shape[1], self.hidden_size).to(x.device)     # [num_layers(=1) * num_directions(=1), batch_size, n_hidden]
+
+        self.lstm.flatten_parameters() # 为解决UserWarning: RNN module weights are not part of single contiguous chunk of memory
+        outputs, (_, _) = self.lstm(input, (hidden_state, cell_state))
+        outputs = outputs[-1]  # [batch_size, n_hidden]
+        embedded = self.W(outputs) + self.b  # model : [batch_size, embedding_dim]
+        
+        log_probs = self.flows.log_probs(embedded)
+
+        return log_probs
+
 ## -----------------

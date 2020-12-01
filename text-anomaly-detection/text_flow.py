@@ -23,7 +23,7 @@ parser.add_argument(
     default=False,
     help='disables cuda training')
 parser.add_argument(
-    '--device',
+    '--cuda-device',
     default='cuda:0',
     help='cuda:0 | ...')
 parser.add_argument(
@@ -69,8 +69,12 @@ parser.add_argument(
     help='GloVe_6B | FastText_en | bert')
 parser.add_argument(
     '--embedding_reduction',
-    default='mean',
-    help='mean | max')
+    default='none',
+    help='mean | max | none')
+parser.add_argument(
+    '--text_embedding',
+    default='lstm',
+    help='lstm')
 parser.add_argument(
     '--lr', type=float, default=0.0001, help='learning rate')
 parser.add_argument(
@@ -178,7 +182,11 @@ elif args.model == 'maf-split-glow':
             InvertibleMM(num_inputs)]
 
 flows = FlowSequential(*modules)
-model = ReduceTextFlowModel(embedding, flows)
+if args.embedding_reduction == 'none':
+    if args.text_embedding == 'lstm':
+        model = LSTMTextFlowModel(embedding, flows)
+else:
+    model = ReduceTextFlowModel(embedding, flows)
 # print(model)
 
 for module in model.modules():
