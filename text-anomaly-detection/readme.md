@@ -23,6 +23,8 @@
     - 嵌入均值、嵌入最大值、嵌入的tfidf加权和
     - Attention
     - LSTM
+    - Bi_LSTM_Attention
+    - TextCNN
 - 流模型
     - MAF
     - MAF-split

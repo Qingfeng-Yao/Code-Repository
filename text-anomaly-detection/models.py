@@ -15,7 +15,7 @@ class MyEmbedding(nn.Embedding):
         super().__init__(vocab_size, embedding_size)
 
         # Check if choice of reduction is valid
-        assert reduction in ('none', 'mean', 'max')
+        assert reduction in ('none', 'mean', 'max', 'sum')
 
         self.vocab_size = vocab_size
         self.embedding_size = embedding_size
@@ -45,6 +45,9 @@ class MyEmbedding(nn.Embedding):
 
             if self.reduction == 'max':
                 embedded, _ = torch.max(embedded, dim=0)
+
+            if self.reduction == 'sum':
+                embedded = torch.sum(embedded, dim=0)
 
             if self.normalize:
                 embedded = embedded / torch.norm(embedded, p=2, dim=1, keepdim=True).clamp(min=1e-08)
@@ -96,6 +99,9 @@ class BERT(nn.Module):
 
             if self.reduction == 'max':
                 embedded, _ = torch.max(embedded, dim=0)
+
+            if self.reduction == 'sum':
+                embedded = torch.sum(embedded, dim=0)
 
             if self.normalize:
                 embedded = embedded / torch.norm(embedded, p=2, dim=1, keepdim=True).clamp(min=1e-08)
@@ -525,6 +531,92 @@ class AttentionTextFlowModel(nn.Module):
         # M.shape = (batch_size, n_attention_heads, hidden_size)
 
         embedded = torch.mean(M, dim=1)
+
+        log_probs = self.flows.log_probs(embedded)
+
+        return log_probs
+
+class Bi_LSTM_A_TextFlowModel(nn.Module):
+    def __init__(self, pretrained_model, flows):
+        super().__init__()
+
+        self.pretrained_model = pretrained_model
+        self.embedding_dim = pretrained_model.embedding_size
+        self.hidden_size = 512
+
+        self.lstm = nn.LSTM(self.embedding_dim, self.hidden_size, bidirectional=True)
+        self.out = nn.Linear(self.hidden_size * 2, self.embedding_dim)
+
+        self.flows = flows
+
+    def attention_net(self, lstm_output, final_state):
+        hidden = final_state.view(-1, self.hidden_size * 2, 1)   # hidden : [batch_size, n_hidden * num_directions(=2), 1(=n_layer)]
+        attn_weights = torch.bmm(lstm_output, hidden).squeeze(2) # attn_weights : [batch_size, n_step]
+        soft_attn_weights = F.softmax(attn_weights, 1)
+        # [batch_size, n_hidden * num_directions(=2), n_step] * [batch_size, n_step, 1] = [batch_size, n_hidden * num_directions(=2), 1]
+        context = torch.bmm(lstm_output.transpose(1, 2), soft_attn_weights.unsqueeze(2)).squeeze(2)
+        return context # context : [batch_size, n_hidden * num_directions(=2)]
+
+
+    def forward(self, x, weights=None):
+        # x.shape = (sentence_length, batch_size)
+
+        input = self.pretrained_model(x)
+        # hidden.shape = (sentence_length, batch_size, embedding_dim)
+
+        hidden_state = torch.zeros(1*2, x.shape[1], self.hidden_size).to(x.device) # [num_layers(=1) * num_directions(=2), batch_size, n_hidden]
+        cell_state = torch.zeros(1*2, x.shape[1], self.hidden_size).to(x.device) # [num_layers(=1) * num_directions(=2), batch_size, n_hidden]
+
+        # final_hidden_state, final_cell_state : [num_layers(=1) * num_directions(=2), batch_size, n_hidden]
+        self.lstm.flatten_parameters()
+        output, (final_hidden_state, final_cell_state) = self.lstm(input, (hidden_state, cell_state))
+        output = output.permute(1, 0, 2) # output : [batch_size, len_seq, n_hidden]
+
+        attn_output = self.attention_net(output, final_hidden_state)
+        embedded = self.out(attn_output) # [batch_size, embedding_dim]
+
+        log_probs = self.flows.log_probs(embedded)
+
+        return log_probs
+
+class TextCNNTextFlowModel(nn.Module):
+    def __init__(self, pretrained_model, flows):
+        super().__init__()
+
+        self.pretrained_model = pretrained_model
+        self.embedding_dim = pretrained_model.embedding_size
+
+        self.filter_sizes = [2, 2, 2]
+        self.num_filters_total = 3 * len(self.filter_sizes)
+
+        self.filter_list = nn.ModuleList([nn.Conv2d(1, 3, (size, self.embedding_dim)) for size in self.filter_sizes])
+
+        self.Weight = nn.Linear(self.num_filters_total, self.embedding_dim, bias=False)
+        self.Bias = nn.Parameter(torch.ones([self.embedding_dim]))
+
+        self.flows = flows
+
+    def forward(self, x, weights=None):
+        # x.shape = (sentence_length, batch_size)
+
+        input = self.pretrained_model(x)
+        # hidden.shape = (sentence_length, batch_size, embedding_dim)
+        input = input.permute(1,0,2)
+        input = input.unsqueeze(1) # add channel(=1) [batch, channel(=1), sequence_length, embedding_size]
+
+        pooled_outputs = []
+        for i, conv in enumerate(self.filter_list):
+            # conv : [input_channel(=1), output_channel(=3), (filter_height, filter_width), bias_option]
+            h = F.relu(conv(input))
+            # mp : ((filter_height, filter_width))
+            mp = nn.MaxPool2d((input.shape[2] - self.filter_sizes[i] + 1, 1))
+            # pooled : [batch_size(=6), output_height(=1), output_width(=1), output_channel(=3)]
+            pooled = mp(h).permute(0, 3, 2, 1)
+            pooled_outputs.append(pooled)
+
+        h_pool = torch.cat(pooled_outputs, len(self.filter_sizes)) # [batch_size(=6), output_height(=1), output_width(=1), output_channel(=3) * 3]
+        h_pool_flat = torch.reshape(h_pool, [-1, self.num_filters_total]) # [batch_size(=6), output_height * output_width * (output_channel * 3)]
+        embedded = self.Weight(h_pool_flat) + self.Bias # [batch_size, embed_dim]
 
         log_probs = self.flows.log_probs(embedded)
 

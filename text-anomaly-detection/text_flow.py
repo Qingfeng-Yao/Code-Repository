@@ -69,12 +69,12 @@ parser.add_argument(
     help='GloVe_6B | FastText_en | bert')
 parser.add_argument(
     '--embedding_reduction',
-    default='none',
-    help='mean | max | none')
+    default='sum',
+    help='mean | max | none | sum')
 parser.add_argument(
     '--text_embedding',
     default='attention',
-    help='attention | lstm')
+    help='attention | lstm | textcnn | bi_lstm_a')
 parser.add_argument(
     '--lr', type=float, default=0.0001, help='learning rate')
 parser.add_argument(
@@ -187,6 +187,10 @@ if args.embedding_reduction == 'none':
         model = AttentionTextFlowModel(embedding, flows)
     elif args.text_embedding == 'lstm':
         model = LSTMTextFlowModel(embedding, flows)
+    elif args.text_embedding == 'bi_lstm_a':
+        model = Bi_LSTM_A_TextFlowModel(embedding, flows)
+    elif args.text_embedding == 'textcnn':
+        model = TextCNNTextFlowModel(embedding, flows)
 else:
     model = ReduceTextFlowModel(embedding, flows)
 # print(model)
