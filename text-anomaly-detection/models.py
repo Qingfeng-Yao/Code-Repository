@@ -11,7 +11,7 @@ from pytorch_pretrained_bert.modeling import BertModel
 class MyEmbedding(nn.Embedding):
     """Embedding base class."""
 
-    def __init__(self, vocab_size, embedding_size, update_embedding=True, reduction='mean', use_tfidf_weights=False, normalize=True):
+    def __init__(self, vocab_size, embedding_size, update_embedding=False, reduction='mean', use_tfidf_weights=False, normalize=True):
         super().__init__(vocab_size, embedding_size)
 
         # Check if choice of reduction is valid
@@ -58,7 +58,7 @@ class MyEmbedding(nn.Embedding):
 class BERT(nn.Module):
     """Class for loading pretrained BERT model."""
 
-    def __init__(self, update_embedding=True, reduction='mean', use_tfidf_weights=False, normalize=True, pretrained_model_name='bert-base-uncased', cache_dir='data/bert_cache'):
+    def __init__(self, update_embedding=False, reduction='mean', use_tfidf_weights=False, normalize=True, pretrained_model_name='bert-base-uncased', cache_dir='data/bert_cache'):
         super().__init__()
 
         # Check if choice of pretrained model is valid
@@ -473,7 +473,7 @@ class CVDDNet(nn.Module):
         cosine_dists = 0.5 * (1 - self.cosine_sim(M, self.c))
         context_weights = F.softmax(-self.alpha * cosine_dists, dim=1)
 
-        return cosine_dists, context_weights, A
+        return cosine_dists, context_weights
 
 class LSTMTextFlowModel(nn.Module):
     def __init__(self, pretrained_model, flows):
