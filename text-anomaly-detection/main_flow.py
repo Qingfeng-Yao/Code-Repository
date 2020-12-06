@@ -14,10 +14,9 @@ from torchtext.vocab import FastText
 
 import datasets
 from models import *
-import util
 
 ## 参数设置
-parser = argparse.ArgumentParser(description='pytorch cvdd for anomaly detection')
+parser = argparse.ArgumentParser(description='pytorch text flow for anomaly detection')
 parser.add_argument(
     '--no-cuda',
     action='store_true',
@@ -58,25 +57,24 @@ parser.add_argument(
     default=64,
     help='input batch size for testing')
 parser.add_argument(
-    '--model', default='cvdd_net', help='cvdd_net')
+    '--model', default='maf', help='maf | maf-split | maf-split-glow | maf-glow')
 parser.add_argument(
-    '--n_attention_heads', 
-    type=int, 
-    default=3, 
-    help='number of attention heads in self-attention module')
-parser.add_argument(
-    '--attention_size', 
-    type=int, 
-    default=150, 
-    help='self-attention module dimensionality')
+    '--num-blocks',
+    type=int,
+    default=5,
+    help='number of invertible blocks')
 parser.add_argument(
     '--pretrain_model',
     default='FastText_en',
     help='GloVe_6B | FastText_en | bert')
 parser.add_argument(
     '--embedding_reduction',
-    default='none',
-    help='none')
+    default='mean',
+    help='mean | max | none | sum')
+parser.add_argument(
+    '--text_embedding',
+    default='attention',
+    help='attention | lstm | textcnn | bi_lstm_a')
 parser.add_argument(
     '--lr', type=float, default=0.0001, help='learning rate')
 parser.add_argument(
@@ -84,15 +82,6 @@ parser.add_argument(
     type=int,
     default=1000,
     help='number of epochs to train')
-parser.add_argument(
-    '--lambda_p', 
-    type=float, 
-    default=1.0,
-    help='hyperparameter for context vector orthogonality regularization P = (CCT - I)')
-parser.add_argument(
-    '--alpha_scheduler', 
-    default='logarithmic', 
-    help='soft | linear | logarithmic | hard: set annealing strategy for temperature hyperparameter alpha')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -151,14 +140,66 @@ if args.pretrain_model in ['GloVe_6B', 'FastText_en']:
         word_vectors = GloVe(name='6B', dim=300, cache='data/word_vectors_cache')
     if args.pretrain_model in ['FastText_en']:
         word_vectors = FastText(language='en', cache='data/word_vectors_cache')
-    embedding = MyEmbedding(dataset.encoder.vocab_size, 300, update_embedding=False, reduction=args.embedding_reduction, use_tfidf_weights=args.use_tfidf_weights)
+    embedding = MyEmbedding(dataset.encoder.vocab_size, 300, reduction=args.embedding_reduction, use_tfidf_weights=args.use_tfidf_weights, normalize=True)
     # Init embedding with pre-trained word vectors
     for i, token in enumerate(dataset.encoder.vocab):
         embedding.weight.data[i] = word_vectors[token]
 if args.pretrain_model in ['bert']:
-    embedding = BERT(update_embedding=False, reduction=args.embedding_reduction, use_tfidf_weights=args.use_tfidf_weights)
+    embedding = BERT(reduction=args.embedding_reduction, use_tfidf_weights=args.use_tfidf_weights, normalize=True)
 
-model = CVDDNet(embedding, attention_size=args.attention_size, n_attention_heads=args.n_attention_heads)
+num_inputs = embedding.embedding_size
+num_hidden = 1024
+act = 'relu'
+
+num_cond_inputs = None
+modules = []
+if args.model == 'maf':
+    for _ in range(args.num_blocks):
+        modules += [
+            MADE(num_inputs, num_hidden, num_cond_inputs, act=act),
+            BatchNormFlow(num_inputs),
+            Reverse(num_inputs)
+            ]
+elif args.model == 'maf-split':
+    for _ in range(args.num_blocks):
+        modules += [
+            MADESplit(num_inputs, num_hidden, num_cond_inputs,
+                         s_act='tanh', t_act='relu'),
+            BatchNormFlow(num_inputs),
+            Reverse(num_inputs)]
+elif args.model == 'maf-glow':
+    for _ in range(args.num_blocks):
+        modules += [
+            MADE(num_inputs, num_hidden, num_cond_inputs, act=act),
+            BatchNormFlow(num_inputs),
+            InvertibleMM(num_inputs)]
+elif args.model == 'maf-split-glow':
+    for _ in range(args.num_blocks):
+        modules += [
+            MADESplit(num_inputs, num_hidden, num_cond_inputs,
+                         s_act='tanh', t_act='relu'),
+            BatchNormFlow(num_inputs),
+            InvertibleMM(num_inputs)]
+
+flows = FlowSequential(*modules)
+if args.embedding_reduction == 'none':
+    if args.text_embedding == 'attention':
+        model = AttentionTextFlowModel(embedding, flows)
+    elif args.text_embedding == 'lstm':
+        model = LSTMTextFlowModel(embedding, flows)
+    elif args.text_embedding == 'bi_lstm_a':
+        model = Bi_LSTM_A_TextFlowModel(embedding, flows)
+    elif args.text_embedding == 'textcnn':
+        model = TextCNNTextFlowModel(embedding, flows)
+else:
+    model = ReduceTextFlowModel(embedding, flows)
+# print(model)
+
+for module in model.modules():
+    if isinstance(module, nn.Linear):
+        nn.init.orthogonal_(module.weight)
+        if hasattr(module, 'bias') and module.bias is not None:
+            module.bias.data.fill_(0)
 
 model.to(device)
 
@@ -166,46 +207,40 @@ parameters = filter(lambda p: p.requires_grad, model.parameters())
 optimizer = optim.Adam(parameters, lr=args.lr, weight_decay=1e-6)
 
 ## 训练及测试
-def train(epoch):
+def train():
     model.train()
     train_loss = 0
 
-    if epoch in args.alpha_milestones:
-        model.alpha = float(args.alphas[args.alpha_i])
-        print(' Temperature alpha scheduler: new alpha is %g' % model.alpha)
-        args.alpha_i += 1
-
     pbar = tqdm(total=len(train_loader.dataset))
     for batch_idx, data in enumerate(train_loader):
-        text_batch, _, _ = data
-        text_batch = text_batch.to(device)
-        # text_batch.shape = (sentence_length, batch_size)
+        text_batch, _, weights = data
+        text_batch, weights = text_batch.to(device), weights.to(device)
 
         optimizer.zero_grad()
-        cosine_dists, context_weights, A = model(text_batch)
-        scores = context_weights * cosine_dists
-        # scores.shape = (batch_size, n_attention_heads)
-        # A.shape = (batch_size, n_attention_heads, sentence_length)
-
-        # get orthogonality penalty: P = (CCT - I)
-        I = torch.eye(args.n_attention_heads).to(device)
-        CCT = model.c @ model.c.transpose(1, 2)
-        P = torch.mean((CCT.squeeze() - I) ** 2)
-
-        # compute loss
-        loss_P = args.lambda_p * P
-        loss_emp = torch.mean(torch.sum(scores, dim=1))
-        loss = loss_emp + loss_P
-
+        loss = -model(text_batch, weights).mean()
         train_loss += loss.item()
         loss.backward()
         optimizer.step()
 
         pbar.update(text_batch.size(1))
-        pbar.set_description('Train, loss: {:.6f}'.format(
-            train_loss / (batch_idx + 1)))
+        pbar.set_description('Train, Log likelihood in nats: {:.6f}'.format(
+            -train_loss / (batch_idx + 1)))
         
     pbar.close()
+        
+    for module in model.modules():
+        if isinstance(module, BatchNormFlow):
+            module.momentum = 0
+
+    with torch.no_grad():
+        for batch_idx, data in enumerate(train_loader):
+            text_batch, _, weights = data
+            text_batch, weights = text_batch.to(device), weights.to(device)
+            model(text_batch, weights)
+
+    for module in model.modules():
+        if isinstance(module, BatchNormFlow):
+            module.momentum = 1
 
 def validate(model, loader):
     model.eval()
@@ -214,28 +249,17 @@ def validate(model, loader):
     pbar = tqdm(total=len(loader.dataset))
     pbar.set_description('Eval')
     for batch_idx, data in enumerate(loader):
-        text_batch, _, _ = data
-        text_batch = text_batch.to(device)
+        text_batch, _, weights = data
+        text_batch, weights = text_batch.to(device), weights.to(device)
     
         with torch.no_grad():
-            cosine_dists, context_weights, A = model(text_batch)
-            scores = context_weights * cosine_dists
-
-            I = torch.eye(args.n_attention_heads).to(device)
-            CCT = model.c @ model.c.transpose(1, 2)
-            P = torch.mean((CCT.squeeze() - I) ** 2)
-
-            loss_P = args.lambda_p * P
-            loss_emp = torch.mean(torch.sum(scores, dim=1))
-            loss = loss_emp + loss_P
-            val_loss += loss.item() 
-
+            val_loss += -model(text_batch, weights).sum().item() 
         pbar.update(text_batch.size(1))
-        pbar.set_description('Val, loss: {:.6f}'.format(
-            val_loss / (batch_idx + 1)))
+        pbar.set_description('Val, Log likelihood in nats: {:.6f}'.format(
+            -val_loss / pbar.n))
 
     pbar.close()
-    return val_loss /  (batch_idx + 1)
+    return val_loss / len(loader.dataset)
 
 def test(model, loader):
     print('Starting testing...')
@@ -243,16 +267,17 @@ def test(model, loader):
     label_score = []
     with torch.no_grad():
         for batch_idx, data in enumerate(loader):
-            text_batch, label_batch, _ = data
-            text_batch, label_batch = text_batch.to(device), label_batch.to(device)
-
-            cosine_dists, context_weights, A = model(text_batch)
-            ad_scores = torch.mean(cosine_dists, dim=1) 
+            text_batch, label_batch, weights = data
+            text_batch, label_batch, weights = text_batch.to(device), label_batch.to(device), weights.to(device)
+                
+            scores = -model(text_batch, weights)
+            ad_scores = scores.squeeze()
 
             label_score += list(zip(label_batch.cpu().data.numpy().tolist(), ad_scores.cpu().data.numpy().tolist()))
     labels, scores = zip(*label_score)
     labels = np.array(labels)
     scores = np.array(scores)
+    scores = np.nan_to_num(scores)
     test_auc = roc_auc_score(labels, scores)
     print('Test set AUC: {:.2f}%'.format(100. * test_auc))
     print('Finished testing.')
@@ -262,26 +287,10 @@ best_validation_loss = float('inf')
 best_validation_epoch = 0
 best_model = model
 
-model.c.data = torch.from_numpy(
-            util.initialize_context_vectors(model, train_loader, device)[np.newaxis, :]).to(device)
-
-# alpha annealing strategy
-args.alpha_milestones = np.arange(1, 6) * int(100 / 5)  # 5 equidistant milestones over 100
-if args.alpha_scheduler == 'soft':
-    args.alphas = [0.0] * 5
-if args.alpha_scheduler == 'linear':
-    args.alphas = np.linspace(.2, 1, 5)
-if args.alpha_scheduler == 'logarithmic':
-    args.alphas = np.logspace(-4, 0, 5)
-if args.alpha_scheduler == 'hard':
-    args.alphas = [100.0] * 4
-
-args.alpha_i = 0    
-
 for epoch in range(args.epochs):
     print('\nEpoch: {}'.format(epoch))
 
-    train(epoch)
+    train()
     validation_loss = validate(model, valid_loader)
 
     if epoch - best_validation_epoch >= 30:
@@ -293,7 +302,7 @@ for epoch in range(args.epochs):
         best_model = copy.deepcopy(model)
 
     print(
-        'Best validation at epoch {}: Average loss: {:.4f}'.
-        format(best_validation_epoch, best_validation_loss))
+        'Best validation at epoch {}: Average Log Likelihood in nats: {:.4f}'.
+        format(best_validation_epoch, -best_validation_loss))
 
 test(best_model, test_loader)
