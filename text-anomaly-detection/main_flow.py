@@ -45,7 +45,7 @@ parser.add_argument(
     '--use_tfidf_weights',
     action='store_true',
     default=False,
-    help='use tfidf weights')
+    help='use tfidf weights for mean embedding reduction')
 parser.add_argument(
     '--batch-size',
     type=int,
@@ -59,6 +59,11 @@ parser.add_argument(
 parser.add_argument(
     '--model', default='maf', help='maf | maf-split | maf-split-glow | maf-glow | realnvp')
 parser.add_argument(
+    '--cond',
+    action='store_true',
+    default=False,
+    help='train class conditional flow')
+parser.add_argument(
     '--num-blocks',
     type=int,
     default=5,
@@ -69,12 +74,8 @@ parser.add_argument(
     help='GloVe_6B | FastText_en | bert')
 parser.add_argument(
     '--embedding_reduction',
-    default='mean',
+    default='none',
     help='mean | max | none | sum')
-parser.add_argument(
-    '--text_embedding',
-    default='attention',
-    help='attention | lstm | textcnn | bi_lstm_a')
 parser.add_argument(
     '--lr', type=float, default=0.0001, help='learning rate')
 parser.add_argument(
@@ -147,12 +148,15 @@ if args.pretrain_model in ['GloVe_6B', 'FastText_en']:
 if args.pretrain_model in ['bert']:
     embedding = BERT(reduction=args.embedding_reduction, use_tfidf_weights=args.use_tfidf_weights, normalize=True)
 
+if args.cond:
+    num_cond_inputs = 400
+else:
+    num_cond_inputs = None
 
 num_inputs = embedding.embedding_size
 num_hidden = 1024
 act = 'relu'
 
-num_cond_inputs = None
 modules = []
 if args.model == 'maf':
     for _ in range(args.num_blocks):
@@ -195,8 +199,10 @@ elif args.model == 'realnvp':
         mask = 1 - mask
 
 flows = FlowSequential(*modules)
-model = ReduceTextFlowModel(embedding, flows)
-# print(model)
+if args.embedding_reduction == 'none':
+    model = TempFlowModel(embedding, flows)
+else:
+    model = ReduceTextFlowModel(embedding, flows)
 
 for module in model.modules():
     if isinstance(module, nn.Linear):

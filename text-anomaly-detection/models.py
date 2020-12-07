@@ -529,4 +529,43 @@ class CVDDNet(nn.Module):
 
         return cosine_dists, context_weights
 
+class TempFlowModel(nn.Module):
+    def __init__(self, pretrained_model, flows, cell_type="GRU"):
+        super().__init__()
+
+        self.pretrained_model = pretrained_model
+        self.embedding_size = pretrained_model.embedding_size
+
+        rnn_cls = {"LSTM": nn.LSTM, "GRU": nn.GRU}[cell_type]
+        self.rnn = rnn_cls(
+            input_size=self.embedding_size,
+            hidden_size=400
+        )
+
+        self.flows = flows
+
+    def forward(self, x, weights=None):
+        # x.shape = (sentence_length, batch_size)
+
+        inputs = self.pretrained_model(x)
+        # inputs.shape = (sentence_length, batch_size, embedding_size)
+
+        hidden = torch.zeros(1, x.shape[1], 400).to(x.device)
+        # hidden : [num_layers * num_directions, batch_size, hidden_size]
+
+        self.rnn.flatten_parameters()
+        outputs, hidden = self.rnn(inputs, hidden)
+        # outputs : [sentence_length, batch_size, num_directions(=1) * hidden_size]
+        # hidden : [num_layers(=1) * num_directions(=1), batch_size, hidden_size]
+
+        inputs = inputs.view(-1, inputs.shape[-1])
+        outputs = outputs.view(-1, outputs.shape[-1])
+        likelihoods = self.flows.log_probs(inputs, outputs)
+
+        likelihoods = likelihoods.view(-1, x.shape[0], likelihoods.shape[-1])
+
+        log_probs = torch.mean(likelihoods, dim=1)
+
+        return log_probs
+
 ## -----------------

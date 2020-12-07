@@ -21,6 +21,7 @@
 ## 流模型异常检测
 - 文本表示
     - 嵌入均值、嵌入最大值、嵌入的tfidf加权和
+    - 基于RNN的条件流
 - 流模型
     - MAF、MAF-split、MAF-glow、MAF-split-glow
     - RealNVP
@@ -36,3 +37,4 @@
 ## 参考资料
 - [lukasruff/CVDD-PyTorch](https://github.com/lukasruff/CVDD-PyTorch)
 - [ikostrikov/pytorch-flows](https://github.com/ikostrikov/pytorch-flows)
+- [zalandoresearch/pytorch-ts](https://github.com/zalandoresearch/pytorch-ts)
