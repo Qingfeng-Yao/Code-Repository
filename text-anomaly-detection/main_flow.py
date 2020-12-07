@@ -64,6 +64,11 @@ parser.add_argument(
     default=False,
     help='train class conditional flow')
 parser.add_argument(
+    '--cond-size',
+    type=int,
+    default=200,
+    help='dim of condition')
+parser.add_argument(
     '--num-blocks',
     type=int,
     default=5,
@@ -149,7 +154,7 @@ if args.pretrain_model in ['bert']:
     embedding = BERT(reduction=args.embedding_reduction, use_tfidf_weights=args.use_tfidf_weights, normalize=True)
 
 if args.cond:
-    num_cond_inputs = 400
+    num_cond_inputs = args.cond_size
 else:
     num_cond_inputs = None
 
@@ -200,7 +205,7 @@ elif args.model == 'realnvp':
 
 flows = FlowSequential(*modules)
 if args.embedding_reduction == 'none':
-    model = TempFlowModel(embedding, flows)
+    model = TempFlowModel(embedding, flows, cond_size=args.cond_size)
 else:
     model = ReduceTextFlowModel(embedding, flows)
 

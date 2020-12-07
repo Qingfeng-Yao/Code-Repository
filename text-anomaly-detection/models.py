@@ -530,17 +530,22 @@ class CVDDNet(nn.Module):
         return cosine_dists, context_weights
 
 class TempFlowModel(nn.Module):
-    def __init__(self, pretrained_model, flows, cell_type="GRU"):
+    def __init__(self, pretrained_model, flows, cond_size=200):
         super().__init__()
 
         self.pretrained_model = pretrained_model
         self.embedding_size = pretrained_model.embedding_size
+        self.hidden_size = 400
+        self.num_layers = 1
+        self.cond_size = cond_size
 
-        rnn_cls = {"LSTM": nn.LSTM, "GRU": nn.GRU}[cell_type]
-        self.rnn = rnn_cls(
+        self.rnn = nn.GRU(
             input_size=self.embedding_size,
-            hidden_size=400
+            hidden_size=self.hidden_size,
+            num_layers=self.num_layers,
+            bidirectional=True
         )
+        self.out = nn.Linear(self.hidden_size * 2, self.cond_size)
 
         self.flows = flows
 
@@ -549,20 +554,23 @@ class TempFlowModel(nn.Module):
 
         inputs = self.pretrained_model(x)
         # inputs.shape = (sentence_length, batch_size, embedding_size)
+        inputs += torch.rand_like(inputs).to(x.device)
 
-        hidden = torch.zeros(1, x.shape[1], 400).to(x.device)
+        hidden = torch.zeros(2*self.num_layers, x.shape[1], self.hidden_size).to(x.device)
         # hidden : [num_layers * num_directions, batch_size, hidden_size]
 
         self.rnn.flatten_parameters()
         outputs, hidden = self.rnn(inputs, hidden)
-        # outputs : [sentence_length, batch_size, num_directions(=1) * hidden_size]
-        # hidden : [num_layers(=1) * num_directions(=1), batch_size, hidden_size]
+        # outputs : [sentence_length, batch_size, num_directions * hidden_size]
+        # hidden : [num_layers * num_directions, batch_size, hidden_size]
+        outputs = self.out(outputs)
 
         inputs = inputs.view(-1, inputs.shape[-1])
         outputs = outputs.view(-1, outputs.shape[-1])
         likelihoods = self.flows.log_probs(inputs, outputs)
 
         likelihoods = likelihoods.view(-1, x.shape[0], likelihoods.shape[-1])
+        # likelihoods : [batch_size, sentence_length, 1]
 
         log_probs = torch.mean(likelihoods, dim=1)
 
