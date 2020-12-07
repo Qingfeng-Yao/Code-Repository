@@ -15,7 +15,6 @@ from . import util
 class IMDB_DATA:
 
     def __init__(self, tokenize='spacy', normal_class=0, use_tfidf_weights=False):
-
         self.n_classes = 2 
         classes = ['pos', 'neg']
         self.normal_classes = [classes[normal_class]]

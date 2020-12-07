@@ -12,7 +12,7 @@
 - 文本预处理：小写-->移除标点/数字/空格/停用词/长度小于3的词
 - torchnlp.datasets.dataset.Dataset-->torch.utils.data.DataLoader
 - 预训练模型
-    - FastText_en
+    - FastText_en:默认使用
     - GloVe_6B
     - bert-base-uncased
     - 嵌入不更新
@@ -21,15 +21,9 @@
 ## 流模型异常检测
 - 文本表示
     - 嵌入均值、嵌入最大值、嵌入的tfidf加权和
-    - Attention
-    - LSTM
-    - Bi_LSTM_Attention
-    - TextCNN
 - 流模型
-    - MAF
-    - MAF-split
-    - MAF-glow
-    - MAF-split-glow
+    - MAF、MAF-split、MAF-glow、MAF-split-glow
+    - RealNVP
 
 ## CVDD模型异常检测
 - 文本表示：利用自注意力机制获得文本表示

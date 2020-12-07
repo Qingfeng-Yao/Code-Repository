@@ -15,7 +15,6 @@ from . import util
 class NEWSGROUP_DATA:
 
     def __init__(self, tokenize='spacy', normal_class=0, use_tfidf_weights=False):
-
         self.n_classes = 2 
         classes = list(range(6))
         groups = [

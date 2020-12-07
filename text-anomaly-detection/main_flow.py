@@ -57,7 +57,7 @@ parser.add_argument(
     default=64,
     help='input batch size for testing')
 parser.add_argument(
-    '--model', default='maf', help='maf | maf-split | maf-split-glow | maf-glow')
+    '--model', default='maf', help='maf | maf-split | maf-split-glow | maf-glow | realnvp')
 parser.add_argument(
     '--num-blocks',
     type=int,
@@ -115,11 +115,11 @@ def collate_fn(batch):
     return transpose(text_batch), label_batch.float(), weight_batch
 
 train_sampler = BucketBatchSampler(dataset.train_set, batch_size=args.batch_size, drop_last=True,
-                                           sort_key=lambda r: len(r['text']))
+                                        sort_key=lambda r: len(r['text']))
 valid_sampler = BucketBatchSampler(dataset.valid_set, batch_size=args.test_batch_size, drop_last=False,
-                                           sort_key=lambda r: len(r['text']))
+                                        sort_key=lambda r: len(r['text']))
 test_sampler = BucketBatchSampler(dataset.test_set, batch_size=args.test_batch_size, drop_last=True,
-                                          sort_key=lambda r: len(r['text']))
+                                        sort_key=lambda r: len(r['text']))
 
 train_loader = torch.utils.data.DataLoader(
     dataset=dataset.train_set, batch_sampler=train_sampler, collate_fn=collate_fn)
@@ -146,6 +146,7 @@ if args.pretrain_model in ['GloVe_6B', 'FastText_en']:
         embedding.weight.data[i] = word_vectors[token]
 if args.pretrain_model in ['bert']:
     embedding = BERT(reduction=args.embedding_reduction, use_tfidf_weights=args.use_tfidf_weights, normalize=True)
+
 
 num_inputs = embedding.embedding_size
 num_hidden = 1024
@@ -180,19 +181,21 @@ elif args.model == 'maf-split-glow':
                          s_act='tanh', t_act='relu'),
             BatchNormFlow(num_inputs),
             InvertibleMM(num_inputs)]
+elif args.model == 'realnvp':
+    mask = torch.arange(0, num_inputs) % 2
+    mask = mask.to(device).float()
+
+    for _ in range(args.num_blocks):
+        modules += [
+            CouplingLayer(
+                num_inputs, num_hidden, mask, num_cond_inputs,
+                s_act='tanh', t_act='relu'),
+            BatchNormFlow(num_inputs)
+        ]
+        mask = 1 - mask
 
 flows = FlowSequential(*modules)
-if args.embedding_reduction == 'none':
-    if args.text_embedding == 'attention':
-        model = AttentionTextFlowModel(embedding, flows)
-    elif args.text_embedding == 'lstm':
-        model = LSTMTextFlowModel(embedding, flows)
-    elif args.text_embedding == 'bi_lstm_a':
-        model = Bi_LSTM_A_TextFlowModel(embedding, flows)
-    elif args.text_embedding == 'textcnn':
-        model = TextCNNTextFlowModel(embedding, flows)
-else:
-    model = ReduceTextFlowModel(embedding, flows)
+model = ReduceTextFlowModel(embedding, flows)
 # print(model)
 
 for module in model.modules():
@@ -251,7 +254,6 @@ def validate(model, loader):
     for batch_idx, data in enumerate(loader):
         text_batch, _, weights = data
         text_batch, weights = text_batch.to(device), weights.to(device)
-    
         with torch.no_grad():
             val_loss += -model(text_batch, weights).sum().item() 
         pbar.update(text_batch.size(1))

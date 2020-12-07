@@ -263,6 +263,60 @@ class MADESplit(nn.Module):
                     a[:, i_col]) + m[:, i_col]
             return x, -a.sum(-1, keepdim=True)
 
+class CouplingLayer(nn.Module):
+    def __init__(self,
+                 num_inputs,
+                 num_hidden,
+                 mask,
+                 num_cond_inputs=None,
+                 s_act='tanh',
+                 t_act='relu'):
+        super(CouplingLayer, self).__init__()
+
+        self.num_inputs = num_inputs
+        self.mask = mask
+
+        activations = {'relu': nn.ReLU, 'sigmoid': nn.Sigmoid, 'tanh': nn.Tanh}
+        s_act_func = activations[s_act]
+        t_act_func = activations[t_act]
+
+        if num_cond_inputs is not None:
+            total_inputs = num_inputs + num_cond_inputs
+        else:
+            total_inputs = num_inputs
+            
+        self.scale_net = nn.Sequential(
+            nn.Linear(total_inputs, num_hidden), s_act_func(),
+            nn.Linear(num_hidden, num_hidden), s_act_func(),
+            nn.Linear(num_hidden, num_inputs))
+        self.translate_net = nn.Sequential(
+            nn.Linear(total_inputs, num_hidden), t_act_func(),
+            nn.Linear(num_hidden, num_hidden), t_act_func(),
+            nn.Linear(num_hidden, num_inputs))
+
+        def init(m):
+            if isinstance(m, nn.Linear):
+                m.bias.data.fill_(0)
+                nn.init.orthogonal_(m.weight.data)
+
+    def forward(self, inputs, cond_inputs=None, mode='direct'):
+        mask = self.mask
+        
+        masked_inputs = inputs * mask
+        if cond_inputs is not None:
+            masked_inputs = torch.cat([masked_inputs, cond_inputs], -1)
+        
+        if mode == 'direct':
+            log_s = self.scale_net(masked_inputs) * (1 - mask)
+            t = self.translate_net(masked_inputs) * (1 - mask)
+            s = torch.exp(log_s)
+            return inputs * s + t, log_s.sum(-1, keepdim=True)
+        else:
+            log_s = self.scale_net(masked_inputs) * (1 - mask)
+            t = self.translate_net(masked_inputs) * (1 - mask)
+            s = torch.exp(-log_s)
+            return (inputs - t) * s, -log_s.sum(-1, keepdim=True)
+
 class BatchNormFlow(nn.Module):
     def __init__(self, num_inputs, momentum=0.0, eps=1e-5):
         super(BatchNormFlow, self).__init__()
@@ -474,152 +528,5 @@ class CVDDNet(nn.Module):
         context_weights = F.softmax(-self.alpha * cosine_dists, dim=1)
 
         return cosine_dists, context_weights
-
-class LSTMTextFlowModel(nn.Module):
-    def __init__(self, pretrained_model, flows):
-        super().__init__()
-
-        self.pretrained_model = pretrained_model
-        self.embedding_dim = pretrained_model.embedding_size
-
-        self.hidden_size = 512
-        self.lstm = nn.LSTM(input_size=self.embedding_dim, hidden_size=self.hidden_size)
-        self.W = nn.Linear(self.hidden_size, self.embedding_dim, bias=False)
-        self.b = nn.Parameter(torch.ones([self.embedding_dim]))
-
-        self.flows = flows
-
-    def forward(self, x, weights=None):
-        # x.shape = (sentence_length, batch_size)
-        # weights.shape = (sentence_length, batch_size)
-
-        input = self.pretrained_model(x)
-        # input.shape = (sentence_length, batch_size, embedding_dim)
-
-        hidden_state = torch.zeros(1, x.shape[1], self.hidden_size).to(x.device)  # [num_layers(=1) * num_directions(=1), batch_size, n_hidden]
-        cell_state = torch.zeros(1, x.shape[1], self.hidden_size).to(x.device)     # [num_layers(=1) * num_directions(=1), batch_size, n_hidden]
-
-        self.lstm.flatten_parameters() # 为解决UserWarning: RNN module weights are not part of single contiguous chunk of memory
-        outputs, (_, _) = self.lstm(input, (hidden_state, cell_state))
-        outputs = outputs[-1]  # [batch_size, n_hidden]
-        embedded = self.W(outputs) + self.b  # model : [batch_size, embedding_dim]
-        
-        log_probs = self.flows.log_probs(embedded)
-
-        return log_probs
-
-class AttentionTextFlowModel(nn.Module):
-    def __init__(self, pretrained_model, flows):
-        super().__init__()
-
-        self.pretrained_model = pretrained_model
-        self.hidden_size = pretrained_model.embedding_size
-
-        self.self_attention = SelfAttention(hidden_size=self.hidden_size,
-                                            attention_size=150,
-                                            n_attention_heads=3)
-
-        self.flows = flows
-
-    def forward(self, x, weights=None):
-        # x.shape = (sentence_length, batch_size)
-        # weights.shape = (sentence_length, batch_size)
-
-        hidden = self.pretrained_model(x)
-        # hidden.shape = (sentence_length, batch_size, hidden_size)
-        M, _ = self.self_attention(hidden)
-        # M.shape = (batch_size, n_attention_heads, hidden_size)
-
-        embedded = torch.mean(M, dim=1)
-
-        log_probs = self.flows.log_probs(embedded)
-
-        return log_probs
-
-class Bi_LSTM_A_TextFlowModel(nn.Module):
-    def __init__(self, pretrained_model, flows):
-        super().__init__()
-
-        self.pretrained_model = pretrained_model
-        self.embedding_dim = pretrained_model.embedding_size
-        self.hidden_size = 512
-
-        self.lstm = nn.LSTM(self.embedding_dim, self.hidden_size, bidirectional=True)
-        self.out = nn.Linear(self.hidden_size * 2, self.embedding_dim)
-
-        self.flows = flows
-
-    def attention_net(self, lstm_output, final_state):
-        hidden = final_state.view(-1, self.hidden_size * 2, 1)   # hidden : [batch_size, n_hidden * num_directions(=2), 1(=n_layer)]
-        attn_weights = torch.bmm(lstm_output, hidden).squeeze(2) # attn_weights : [batch_size, n_step]
-        soft_attn_weights = F.softmax(attn_weights, 1)
-        # [batch_size, n_hidden * num_directions(=2), n_step] * [batch_size, n_step, 1] = [batch_size, n_hidden * num_directions(=2), 1]
-        context = torch.bmm(lstm_output.transpose(1, 2), soft_attn_weights.unsqueeze(2)).squeeze(2)
-        return context # context : [batch_size, n_hidden * num_directions(=2)]
-
-
-    def forward(self, x, weights=None):
-        # x.shape = (sentence_length, batch_size)
-
-        input = self.pretrained_model(x)
-        # hidden.shape = (sentence_length, batch_size, embedding_dim)
-
-        hidden_state = torch.zeros(1*2, x.shape[1], self.hidden_size).to(x.device) # [num_layers(=1) * num_directions(=2), batch_size, n_hidden]
-        cell_state = torch.zeros(1*2, x.shape[1], self.hidden_size).to(x.device) # [num_layers(=1) * num_directions(=2), batch_size, n_hidden]
-
-        # final_hidden_state, final_cell_state : [num_layers(=1) * num_directions(=2), batch_size, n_hidden]
-        self.lstm.flatten_parameters()
-        output, (final_hidden_state, final_cell_state) = self.lstm(input, (hidden_state, cell_state))
-        output = output.permute(1, 0, 2) # output : [batch_size, len_seq, n_hidden]
-
-        attn_output = self.attention_net(output, final_hidden_state)
-        embedded = self.out(attn_output) # [batch_size, embedding_dim]
-
-        log_probs = self.flows.log_probs(embedded)
-
-        return log_probs
-
-class TextCNNTextFlowModel(nn.Module):
-    def __init__(self, pretrained_model, flows):
-        super().__init__()
-
-        self.pretrained_model = pretrained_model
-        self.embedding_dim = pretrained_model.embedding_size
-
-        self.filter_sizes = [2, 2, 2]
-        self.num_filters_total = 3 * len(self.filter_sizes)
-
-        self.filter_list = nn.ModuleList([nn.Conv2d(1, 3, (size, self.embedding_dim)) for size in self.filter_sizes])
-
-        self.Weight = nn.Linear(self.num_filters_total, self.embedding_dim, bias=False)
-        self.Bias = nn.Parameter(torch.ones([self.embedding_dim]))
-
-        self.flows = flows
-
-    def forward(self, x, weights=None):
-        # x.shape = (sentence_length, batch_size)
-
-        input = self.pretrained_model(x)
-        # hidden.shape = (sentence_length, batch_size, embedding_dim)
-        input = input.permute(1,0,2)
-        input = input.unsqueeze(1) # add channel(=1) [batch, channel(=1), sequence_length, embedding_size]
-
-        pooled_outputs = []
-        for i, conv in enumerate(self.filter_list):
-            # conv : [input_channel(=1), output_channel(=3), (filter_height, filter_width), bias_option]
-            h = F.relu(conv(input))
-            # mp : ((filter_height, filter_width))
-            mp = nn.MaxPool2d((input.shape[2] - self.filter_sizes[i] + 1, 1))
-            # pooled : [batch_size(=6), output_height(=1), output_width(=1), output_channel(=3)]
-            pooled = mp(h).permute(0, 3, 2, 1)
-            pooled_outputs.append(pooled)
-
-        h_pool = torch.cat(pooled_outputs, len(self.filter_sizes)) # [batch_size(=6), output_height(=1), output_width(=1), output_channel(=3) * 3]
-        h_pool_flat = torch.reshape(h_pool, [-1, self.num_filters_total]) # [batch_size(=6), output_height * output_width * (output_channel * 3)]
-        embedded = self.Weight(h_pool_flat) + self.Bias # [batch_size, embed_dim]
-
-        log_probs = self.flows.log_probs(embedded)
-
-        return log_probs
 
 ## -----------------
