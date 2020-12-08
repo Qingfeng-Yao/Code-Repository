@@ -563,8 +563,8 @@ class TempFlowModel(nn.Module):
         outputs, hidden = self.rnn(inputs, hidden)
         # outputs : [sentence_length, batch_size, num_directions * hidden_size]
         # hidden : [num_layers * num_directions, batch_size, hidden_size]
+      
         outputs = self.out(outputs)
-
         inputs = inputs.view(-1, inputs.shape[-1])
         outputs = outputs.view(-1, outputs.shape[-1])
         likelihoods = self.flows.log_probs(inputs, outputs)
