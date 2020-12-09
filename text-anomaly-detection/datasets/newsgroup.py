@@ -39,20 +39,24 @@ class NEWSGROUP_DATA:
         self.tst.columns.add('weight')
 
         train_idx_normal = []  
+        train_idx_outlier = []
         for i, row in enumerate(self.trn):
             if row['label'] in self.normal_classes:
                 train_idx_normal.append(i)
                 row['label'] = torch.tensor(0)
             else:
+                train_idx_outlier.append(i)
                 row['label'] = torch.tensor(1)
             row['text'] = row['text'].lower()
 
         valid_idx_normal = []
+        valid_idx_outlier = []
         for i, row in enumerate(self.val):
             if row['label'] in self.normal_classes:
                 valid_idx_normal.append(i)
                 row['label'] = torch.tensor(0)
             else:
+                valid_idx_outlier.append(i)
                 row['label'] = torch.tensor(1)
             row['text'] = row['text'].lower()
 
@@ -63,22 +67,24 @@ class NEWSGROUP_DATA:
         self.train_set = Subset(self.trn, train_idx_normal)
         self.valid_set = Subset(self.val, valid_idx_normal)
         self.test_set = self.tst
+        self.train_set_oe = Subset(self.trn, train_idx_outlier)
+        self.valid_set_oe = Subset(self.val, valid_idx_outlier)
 
-        text_corpus = [row['text'] for row in datasets_iterator(self.train_set, self.valid_set, self.test_set)]
+        text_corpus = [row['text'] for row in datasets_iterator(self.train_set, self.valid_set, self.test_set, self.train_set_oe, self.valid_set_oe)]
         if tokenize == 'spacy':
             self.encoder = SpacyEncoder(text_corpus, min_occurrences=3, append_eos=False)
         if tokenize == 'bert':
             self.encoder = util.MyBertTokenizer.from_pretrained('bert-base-uncased', cache_dir='data/bert_cache')
 
         # Encode
-        for row in datasets_iterator(self.train_set, self.valid_set, self.test_set):
+        for row in datasets_iterator(self.train_set, self.valid_set, self.test_set, self.train_set_oe, self.valid_set_oe):
             row['text'] = self.encoder.encode(row['text'])
 
         # Compute tf-idf weights
         if use_tfidf_weights:
-            util.compute_tfidf_weights(self.train_set, self.valid_set, self.test_set, vocab_size=self.encoder.vocab_size)
+            util.compute_tfidf_weights(self.train_set, self.valid_set, self.test_set, self.train_set_oe, self.valid_set_oe, vocab_size=self.encoder.vocab_size)
         else:
-            for row in datasets_iterator(self.train_set, self.valid_set, self.test_set):
+            for row in datasets_iterator(self.train_set, self.valid_set, self.test_set, self.train_set_oe, self.valid_set_oe):
                 row['weight'] = torch.empty(0)
 
         
