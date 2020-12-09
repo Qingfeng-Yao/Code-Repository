@@ -41,7 +41,7 @@ parser.add_argument(
     '--use-oe',
     action='store_true',
     default=False,
-    help='use outlier exposure for training')
+    help='use outlier exposure for training and validating')
 parser.add_argument(
     '--tokenize',
     default='spacy',
@@ -106,7 +106,7 @@ if args.cuda:
     torch.backends.cudnn.deterministic = True
 
 ## 数据下载
-dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal_class=args.normal_class, use_tfidf_weights=args.use_tfidf_weights, use_oe=args.use_oe)
+dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal_class=args.normal_class, use_tfidf_weights=args.use_tfidf_weights)
 
 def collate_fn(batch):
     """ list of tensors to a batch tensors """
@@ -259,7 +259,7 @@ def train():
             data_loss = -data_loss_raw.mean()
             oe_loss_raw = model(text_batch_oe, weights_oe)
             oe_loss = F.log_softmax(oe_loss_raw - torch.max(oe_loss_raw, dim=-1, keepdim=True)[0], dim=-1).mean()
-            loss = data_loss - 0.5*oe_loss
+            loss = data_loss 
             train_loss += loss.item()
             loss.backward()
             optimizer.step()
@@ -316,7 +316,7 @@ def validate(model, loader, loader_oe=None):
                 data_loss = -data_loss_raw.sum().item()
                 oe_loss_raw = model(text_batch_oe, weights_oe)
                 oe_loss = F.log_softmax(oe_loss_raw - torch.max(oe_loss_raw, dim=-1, keepdim=True)[0], dim=-1).sum().item()
-                val_loss += (data_loss - 0.5*oe_loss)
+                val_loss += (data_loss)
 
             pbar.update(text_batch.size(1))
             pbar.set_description('Val, loss: {:.6f}'.format(

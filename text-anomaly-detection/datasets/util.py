@@ -71,22 +71,22 @@ class MyBertTokenizer(BertTokenizer):
         tokens = [self.itos[index] for index in tensor]
         return ' '.join(tokens)
 
-def compute_tfidf_weights(train_set, valid_set, test_set, vocab_size):
-    """ Compute the Tf-idf weights (based on idf vector computed from train_set and valid_set)."""
+def compute_tfidf_weights(train_set, valid_set, test_set, train_set_oe, valid_set_oe, vocab_size):
+    """ Compute the Tf-idf weights (based on idf vector computed from train_set, valid_set, train_set_oe and valid_set_oe)."""
 
     transformer = TfidfTransformer()
 
-    # fit idf vector on train set and valid set
-    counts = np.zeros((len(train_set)+len(valid_set), vocab_size), dtype=np.int64)
-    for i, row in enumerate(train_set+valid_set):
+    # fit idf vector on train_set, valid_set, train_set_oe and valid_set_oe
+    counts = np.zeros((len(train_set)+len(valid_set)+len(train_set_oe)+len(valid_set_oe), vocab_size), dtype=np.int64)
+    for i, row in enumerate(train_set+valid_set+train_set_oe+valid_set_oe):
         counts_sample = torch.bincount(row['text'])
         counts[i, :len(counts_sample)] = counts_sample.cpu().data.numpy()
     tfidf = transformer.fit_transform(counts)
 
-    for i, row in enumerate(train_set+valid_set):
+    for i, row in enumerate(train_set+valid_set+train_set_oe+valid_set_oe):
         row['weight'] = torch.tensor(tfidf[i, row['text']].toarray().astype(np.float32).flatten())
 
-    # compute tf-idf weights for test set (using idf vector from train set and valid set)
+    # compute tf-idf weights for test set (using idf vector from train_set, valid_set, train_set_oe and valid_set_oe)
     counts = np.zeros((len(test_set), vocab_size), dtype=np.int64)
     for i, row in enumerate(test_set):
         counts_sample = torch.bincount(row['text'])
