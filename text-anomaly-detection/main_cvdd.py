@@ -67,11 +67,11 @@ parser.add_argument(
     default='FastText_en',
     help='GloVe_6B | FastText_en | bert')
 parser.add_argument(
-    '--lr', type=float, default=0.0001, help='learning rate')
+    '--lr', type=float, default=0.01, help='learning rate')
 parser.add_argument(
     '--epochs',
     type=int,
-    default=1000,
+    default=100,
     help='number of epochs to train')
 parser.add_argument(
     '--lambda_p', 
