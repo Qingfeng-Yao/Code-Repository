@@ -149,7 +149,7 @@ class MaskedLinear(nn.Module):
             output += self.cond_linear(cond_inputs)
         return output
 nn.MaskedLinear = MaskedLinear
-
+    
 class MADE(nn.Module):
     def __init__(self,
                  num_inputs,
@@ -180,15 +180,15 @@ class MADE(nn.Module):
     def forward(self, inputs, cond_inputs=None, mode='direct'):
         if mode == 'direct':
             h = self.joiner(inputs, cond_inputs)
-            m, a = self.trunk(h).chunk(2, 1)
+            m, a = self.trunk(h).chunk(2, -1)
             u = (inputs - m) * torch.exp(-a)
             return u, -a.sum(-1, keepdim=True)
 
         else:
             x = torch.zeros_like(inputs)
-            for i_col in range(inputs.shape[1]):
+            for i_col in range(inputs.shape[-1]):
                 h = self.joiner(x, cond_inputs)
-                m, a = self.trunk(h).chunk(2, 1)
+                m, a = self.trunk(h).chunk(2, -1)
                 x[:, i_col] = inputs[:, i_col] * torch.exp(
                     a[:, i_col]) + m[:, i_col]
             return x, -a.sum(-1, keepdim=True)
@@ -249,7 +249,7 @@ class MADESplit(nn.Module):
 
         else:
             x = torch.zeros_like(inputs)
-            for i_col in range(inputs.shape[1]):
+            for i_col in range(inputs.shape[-1]):
                 h = self.s_joiner(x, cond_inputs)
                 m = self.s_trunk(h)
 
@@ -332,9 +332,9 @@ class BatchNormFlow(nn.Module):
     def forward(self, inputs, cond_inputs=None, mode='direct'):
         if mode == 'direct':
             if self.training:
-                self.batch_mean = inputs.mean(0)
+                self.batch_mean = inputs.reshape(-1, inputs.shape[-1]).mean(0)
                 self.batch_var = (
-                    inputs - self.batch_mean).pow(2).mean(0) + self.eps
+                    inputs - self.batch_mean).pow(2).reshape(-1, inputs.shape[-1]).mean(0) + self.eps
 
                 self.running_mean.mul_(self.momentum)
                 self.running_var.mul_(self.momentum)
@@ -377,11 +377,11 @@ class Reverse(nn.Module):
 
     def forward(self, inputs, cond_inputs=None, mode='direct'):
         if mode == 'direct':
-            return inputs[:, self.perm], torch.zeros(
-                inputs.size(0), 1, device=inputs.device)
+            return inputs[:, :, self.perm], torch.zeros(
+                inputs.size(0), inputs.size(1), 1, device=inputs.device)
         else:
-            return inputs[:, self.inv_perm], torch.zeros(
-                inputs.size(0), 1, device=inputs.device)
+            return inputs[:, :, self.inv_perm], torch.zeros(
+                inputs.size(0), inputs.size(1), 1, device=inputs.device)
 
 class InvertibleMM(nn.Module):
     def __init__(self, num_inputs):
@@ -392,19 +392,19 @@ class InvertibleMM(nn.Module):
     def forward(self, inputs, cond_inputs=None, mode='direct'):
         if mode == 'direct':
             return inputs @ self.W, torch.slogdet(
-                self.W)[-1].unsqueeze(0).unsqueeze(0).repeat(
-                    inputs.size(0), 1)
+                self.W)[-1].unsqueeze(0).unsqueeze(0).unsqueeze(0).repeat(
+                    inputs.size(0), inputs.size(1), 1)
         else:
             return inputs @ torch.inverse(self.W), -torch.slogdet(
-                self.W)[-1].unsqueeze(0).unsqueeze(0).repeat(
-                    inputs.size(0), 1)
+                self.W)[-1].unsqueeze(0).unsqueeze(0).unsqueeze(0).repeat(
+                    inputs.size(0), inputs.size(1), 1)
 
 class FlowSequential(nn.Sequential):
     def forward(self, inputs, cond_inputs=None, mode='direct', logdets=None):
         self.num_inputs = inputs.size(-1)
 
         if logdets is None:
-            logdets = torch.zeros(inputs.size(0), 1, device=inputs.device)
+            logdets = torch.zeros(inputs.size(0), inputs.size(1), 1, device=inputs.device)
 
         assert mode in ['direct', 'inverse']
         if mode == 'direct':
@@ -487,8 +487,10 @@ class ReduceTextFlowModel(nn.Module):
 
         hidden = self.pretrained_model(x, weights)
         # hidden.shape = (batch_size, hidden_size)
+        hidden = hidden.unsqueeze(1)
 
         log_probs = self.flows.log_probs(hidden)
+        log_probs = torch.mean(log_probs, dim=1)
 
         return log_probs
 
@@ -535,7 +537,7 @@ class TempFlowModel(nn.Module):
 
         self.pretrained_model = pretrained_model
         self.embedding_size = pretrained_model.embedding_size
-        self.hidden_size = 400
+        self.hidden_size = 40
         self.num_layers = 1
         self.cond_size = cond_size
 
@@ -565,11 +567,10 @@ class TempFlowModel(nn.Module):
         # hidden : [num_layers * num_directions, batch_size, hidden_size]
       
         outputs = self.out(outputs)
-        inputs = inputs.view(-1, inputs.shape[-1])
-        outputs = outputs.view(-1, outputs.shape[-1])
+        inputs = inputs.permute(1, 0, 2)
+        outputs = outputs.permute(1, 0, 2)
+        # inputs /= inputs.mean(1).unsqueeze(1).clone()
         likelihoods = self.flows.log_probs(inputs, outputs)
-
-        likelihoods = likelihoods.view(-1, x.shape[0], likelihoods.shape[-1])
         # likelihoods : [batch_size, sentence_length, 1]
 
         log_probs = torch.mean(likelihoods, dim=1)
