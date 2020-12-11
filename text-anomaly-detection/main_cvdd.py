@@ -48,11 +48,6 @@ parser.add_argument(
     default=64,
     help='input batch size for training')
 parser.add_argument(
-    '--test-batch-size',
-    type=int,
-    default=64,
-    help='input batch size for testing')
-parser.add_argument(
     '--n_attention_heads', 
     type=int, 
     default=3, 
@@ -112,9 +107,9 @@ def collate_fn(batch):
 
 train_sampler = BucketBatchSampler(dataset.train_set, batch_size=args.batch_size, drop_last=True,
                                            sort_key=lambda r: len(r['text']))
-valid_sampler = BucketBatchSampler(dataset.valid_set, batch_size=args.test_batch_size, drop_last=False,
+valid_sampler = BucketBatchSampler(dataset.valid_set, batch_size=args.batch_size, drop_last=False,
                                            sort_key=lambda r: len(r['text']))
-test_sampler = BucketBatchSampler(dataset.test_set, batch_size=args.test_batch_size, drop_last=True,
+test_sampler = BucketBatchSampler(dataset.test_set, batch_size=args.batch_size, drop_last=True,
                                           sort_key=lambda r: len(r['text']))
 
 train_loader = torch.utils.data.DataLoader(
@@ -149,6 +144,8 @@ model.to(device)
 
 parameters = filter(lambda p: p.requires_grad, model.parameters())
 optimizer = optim.Adam(parameters, lr=args.lr, weight_decay=1e-6)
+pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print('total number of parameters:',pytorch_total_params)
 
 ## 训练及测试
 def train():
