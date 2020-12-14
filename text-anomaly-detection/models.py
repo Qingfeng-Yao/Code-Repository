@@ -584,10 +584,10 @@ class TransformerTempFlowModel(nn.Module):
         self.pretrained_model = pretrained_model
         self.embedding_size = pretrained_model.embedding_size
         self.d_model = 512
-        self.num_heads = 8
+        self.num_heads = 4
         self.cond_size = cond_size
-        self.num_encoder_layers = 6
-        self.num_decoder_layers = 6
+        self.num_encoder_layers = 3
+        self.num_decoder_layers = 3
         self.dim_feedforward_scale = 4
 
         self.encoder_input = nn.Linear(self.embedding_size, self.d_model)

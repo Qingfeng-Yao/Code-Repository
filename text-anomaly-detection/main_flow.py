@@ -57,7 +57,7 @@ parser.add_argument(
     default=64,
     help='input batch size for training')
 parser.add_argument(
-    '--model', default='maf-split-glow', help='maf | maf-split | maf-split-glow | maf-glow | realnvp')
+    '--model', default='maf', help='maf | maf-split | maf-split-glow | maf-glow | realnvp')
 parser.add_argument(
     '--cond',
     action='store_true',
@@ -103,6 +103,7 @@ torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = True
 
 if args.cuda:
     kwargs = {'num_workers': 28, 'pin_memory': True} 
@@ -129,14 +130,14 @@ def collate_fn(batch):
 
     return transpose(text_batch), label_batch.float(), weight_batch
 
-train_sampler = BucketBatchSampler(dataset.train_set, batch_size=args.batch_size, drop_last=False,
+train_sampler = BucketBatchSampler(dataset.train_set, batch_size=args.batch_size, drop_last=True,
                                         sort_key=lambda r: len(r['text']))
 valid_sampler = BucketBatchSampler(dataset.valid_set, batch_size=args.batch_size, drop_last=False,
                                         sort_key=lambda r: len(r['text']))
-test_sampler = BucketBatchSampler(dataset.test_set, batch_size=args.batch_size, drop_last=False,
+test_sampler = BucketBatchSampler(dataset.test_set, batch_size=args.batch_size, drop_last=True,
                                         sort_key=lambda r: len(r['text']))
 if args.use_oe:
-    train_sampler_oe = BucketBatchSampler(dataset.train_set_oe, batch_size=args.batch_size, drop_last=False,
+    train_sampler_oe = BucketBatchSampler(dataset.train_set_oe, batch_size=args.batch_size, drop_last=True,
                                         sort_key=lambda r: len(r['text']))
     valid_sampler_oe = BucketBatchSampler(dataset.valid_set_oe, batch_size=args.batch_size, drop_last=False,
                                         sort_key=lambda r: len(r['text']))
@@ -260,10 +261,12 @@ def train():
     if args.use_oe:
         for batch_idx, (data, data_oe) in enumerate(zip(iter(train_loader), iter(train_loader_oe))):
             text_batch, _, weights = data
-            text_batch, weights = text_batch.to(device), weights.to(device)
+            if args.cuda:
+                text_batch, weights = text_batch.cuda(device ,non_blocking=True), weights.cuda(device, non_blocking=True)
 
             text_batch_oe, _, weights_oe = data_oe
-            text_batch_oe, weights_oe = text_batch_oe.to(device), weights_oe.to(device)
+            if args.cuda:
+                text_batch_oe, weights_oe = text_batch_oe.cuda(device, non_blocking=True), weights_oe.cuda(device, non_blocking=True)
 
             optimizer.zero_grad()
 
@@ -282,7 +285,8 @@ def train():
     else:
         for batch_idx, data in enumerate(train_loader):
             text_batch, _, weights = data
-            text_batch, weights = text_batch.to(device), weights.to(device)
+            if args.cuda:
+                text_batch, weights = text_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True)
 
             optimizer.zero_grad()
             loss = -model(text_batch, weights).mean()
@@ -302,7 +306,8 @@ def train():
     with torch.no_grad():
         for batch_idx, data in enumerate(train_loader):
             text_batch, _, weights = data
-            text_batch, weights = text_batch.to(device), weights.to(device)
+            if args.cuda:
+                text_batch, weights = text_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True)
             model(text_batch, weights)
 
     for module in model.modules():
@@ -318,10 +323,12 @@ def validate(model, loader, loader_oe=None):
     if args.use_oe:
         for batch_idx, (data, data_oe) in enumerate(zip(iter(loader), iter(loader_oe))):
             text_batch, _, weights = data
-            text_batch, weights = text_batch.to(device), weights.to(device)
+            if args.cuda:
+                text_batch, weights = text_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True)
 
             text_batch_oe, _, weights_oe = data_oe
-            text_batch_oe, weights_oe = text_batch_oe.to(device), weights_oe.to(device)
+            if args.cuda:
+                text_batch_oe, weights_oe = text_batch_oe.cuda(device, non_blocking=True), weights_oe.cuda(device, non_blocking=True)
 
             with torch.no_grad():
                 data_loss_raw = model(text_batch, weights)
@@ -353,7 +360,8 @@ def test(model, loader):
     with torch.no_grad():
         for batch_idx, data in enumerate(loader):
             text_batch, label_batch, weights = data
-            text_batch, label_batch, weights = text_batch.to(device), label_batch.to(device), weights.to(device)
+            if args.cuda:
+                text_batch, label_batch, weights = text_batch.cuda(device, non_blocking=True), label_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True)
                 
             scores = -model(text_batch, weights)
             ad_scores = scores.squeeze(1)
