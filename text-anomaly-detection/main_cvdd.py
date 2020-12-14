@@ -91,7 +91,7 @@ dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal_class=a
 def collate_fn(batch):
     """ list of tensors to a batch tensors """
     # PyTorch RNN requires batches to be transposed for speed and integration with CUDA
-    transpose = (lambda b: b.t_().squeeze(0).contiguous())
+    transpose = (lambda b: b.t().contiguous())
 
     text_batch, _ = stack_and_pad_tensors([row['text'] for row in batch])
     label_batch = torch.stack([row['label'] for row in batch])

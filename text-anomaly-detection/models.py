@@ -484,7 +484,7 @@ class ReduceTextFlowModel(nn.Module):
     def forward(self, x, weights=None):
         # x.shape = (sentence_length, batch_size)
         # weights.shape = (sentence_length, batch_size)
-
+        
         hidden = self.pretrained_model(x, weights)
         # hidden.shape = (batch_size, hidden_size)
         hidden = hidden.unsqueeze(1)
@@ -532,19 +532,20 @@ class CVDDNet(nn.Module):
         return cosine_dists, context_weights
 
 class TempFlowModel(nn.Module):
-    def __init__(self, pretrained_model, flows, cond_size=200):
+    def __init__(self, pretrained_model, flows, cond_size=300):
         super().__init__()
 
         self.pretrained_model = pretrained_model
         self.embedding_size = pretrained_model.embedding_size
-        self.hidden_size = 40
-        self.num_layers = 1
+        self.hidden_size = 512
+        self.num_layers = 2
         self.cond_size = cond_size
 
         self.rnn = nn.GRU(
             input_size=self.embedding_size,
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,
+            dropout=0.1,
             bidirectional=True
         )
         self.out = nn.Linear(self.hidden_size * 2, self.cond_size)
@@ -569,10 +570,60 @@ class TempFlowModel(nn.Module):
         outputs = self.out(outputs)
         inputs = inputs.permute(1, 0, 2)
         outputs = outputs.permute(1, 0, 2)
-        # inputs /= inputs.mean(1).unsqueeze(1).clone()
+
         likelihoods = self.flows.log_probs(inputs, outputs)
         # likelihoods : [batch_size, sentence_length, 1]
+        log_probs = torch.mean(likelihoods, dim=1)
 
+        return log_probs
+
+class TransformerTempFlowModel(nn.Module):
+    def __init__(self, pretrained_model, flows, cond_size=300):
+        super().__init__()
+
+        self.pretrained_model = pretrained_model
+        self.embedding_size = pretrained_model.embedding_size
+        self.d_model = 512
+        self.num_heads = 8
+        self.cond_size = cond_size
+        self.num_encoder_layers = 6
+        self.num_decoder_layers = 6
+        self.dim_feedforward_scale = 4
+
+        self.encoder_input = nn.Linear(self.embedding_size, self.d_model)
+
+        self.transformer = nn.Transformer(
+            d_model=self.d_model,
+            nhead=self.num_heads,
+            num_encoder_layers=self.num_encoder_layers,
+            num_decoder_layers=self.num_decoder_layers,
+            dim_feedforward=self.dim_feedforward_scale * self.d_model,
+            dropout=0.1,
+            activation="gelu",
+        )
+
+        self.out = nn.Linear(self.d_model, self.cond_size)
+
+        self.flows = flows
+
+    def forward(self, x, weights=None):
+        # x.shape = (sentence_length, batch_size)
+
+        inputs = self.pretrained_model(x)
+        # inputs.shape = (sentence_length, batch_size, embedding_size)
+        inputs += torch.rand_like(inputs).to(x.device)
+
+        enc_out = self.transformer.encoder(
+            self.encoder_input(inputs.permute(1, 0, 2)).permute(1, 0, 2)
+        )
+
+        outputs = enc_out.permute(1, 0, 2)
+        inputs = inputs.permute(1, 0, 2)
+
+        outputs = self.out(outputs)
+
+        likelihoods = self.flows.log_probs(inputs, outputs)
+        # likelihoods : [batch_size, sentence_length, 1]
         log_probs = torch.mean(likelihoods, dim=1)
 
         return log_probs

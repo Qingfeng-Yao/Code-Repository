@@ -57,12 +57,7 @@ parser.add_argument(
     default=64,
     help='input batch size for training')
 parser.add_argument(
-    '--test-batch-size',
-    type=int,
-    default=64,
-    help='input batch size for testing')
-parser.add_argument(
-    '--model', default='maf', help='maf | maf-split | maf-split-glow | maf-glow | realnvp')
+    '--model', default='maf-split-glow', help='maf | maf-split | maf-split-glow | maf-glow | realnvp')
 parser.add_argument(
     '--cond',
     action='store_true',
@@ -71,8 +66,12 @@ parser.add_argument(
 parser.add_argument(
     '--cond-size',
     type=int,
-    default=200,
+    default=300,
     help='dim of condition')
+parser.add_argument(
+    '--temp',
+    default='rnn',
+    help='model to capture temporal information: rnn | transformer')
 parser.add_argument(
     '--num-blocks',
     type=int,
@@ -91,7 +90,7 @@ parser.add_argument(
 parser.add_argument(
     '--epochs',
     type=int,
-    default=1000,
+    default=100,
     help='number of epochs to train')
 
 args = parser.parse_args()
@@ -105,13 +104,18 @@ if args.cuda:
     torch.cuda.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = True
 
+if args.cuda:
+    kwargs = {'num_workers': 28, 'pin_memory': True} 
+else:
+    kwargs = {}
+
 ## 数据下载
 dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal_class=args.normal_class, use_tfidf_weights=args.use_tfidf_weights)
 
 def collate_fn(batch):
     """ list of tensors to a batch tensors """
     # PyTorch RNN requires batches to be transposed for speed and integration with CUDA
-    transpose = (lambda b: b.t_().squeeze(0).contiguous())
+    transpose = (lambda b: b.t().contiguous())
 
     text_batch, _ = stack_and_pad_tensors([row['text'] for row in batch])
     label_batch = torch.stack([row['label'] for row in batch])
@@ -125,39 +129,42 @@ def collate_fn(batch):
 
     return transpose(text_batch), label_batch.float(), weight_batch
 
-train_sampler = BucketBatchSampler(dataset.train_set, batch_size=args.batch_size, drop_last=True,
+train_sampler = BucketBatchSampler(dataset.train_set, batch_size=args.batch_size, drop_last=False,
                                         sort_key=lambda r: len(r['text']))
-valid_sampler = BucketBatchSampler(dataset.valid_set, batch_size=args.test_batch_size, drop_last=False,
+valid_sampler = BucketBatchSampler(dataset.valid_set, batch_size=args.batch_size, drop_last=False,
                                         sort_key=lambda r: len(r['text']))
-test_sampler = BucketBatchSampler(dataset.test_set, batch_size=args.test_batch_size, drop_last=True,
+test_sampler = BucketBatchSampler(dataset.test_set, batch_size=args.batch_size, drop_last=False,
                                         sort_key=lambda r: len(r['text']))
 if args.use_oe:
-    train_sampler_oe = BucketBatchSampler(dataset.train_set_oe, batch_size=args.batch_size, drop_last=True,
+    train_sampler_oe = BucketBatchSampler(dataset.train_set_oe, batch_size=args.batch_size, drop_last=False,
                                         sort_key=lambda r: len(r['text']))
-    valid_sampler_oe = BucketBatchSampler(dataset.valid_set_oe, batch_size=args.test_batch_size, drop_last=False,
+    valid_sampler_oe = BucketBatchSampler(dataset.valid_set_oe, batch_size=args.batch_size, drop_last=False,
                                         sort_key=lambda r: len(r['text']))
 
 
 train_loader = torch.utils.data.DataLoader(
-    dataset=dataset.train_set, batch_sampler=train_sampler, collate_fn=collate_fn)
+    dataset=dataset.train_set, batch_sampler=train_sampler, collate_fn=collate_fn, **kwargs)
 
 valid_loader = torch.utils.data.DataLoader(
     dataset=dataset.valid_set,
     batch_sampler=valid_sampler,
-    collate_fn=collate_fn)
+    collate_fn=collate_fn,
+    **kwargs)
 
 test_loader = torch.utils.data.DataLoader(
     dataset=dataset.test_set,
     batch_sampler=test_sampler,
-    collate_fn=collate_fn)
+    collate_fn=collate_fn,
+    **kwargs)
 if args.use_oe:
     train_loader_oe = torch.utils.data.DataLoader(
-    dataset=dataset.train_set_oe, batch_sampler=train_sampler_oe, collate_fn=collate_fn)
+    dataset=dataset.train_set_oe, batch_sampler=train_sampler_oe, collate_fn=collate_fn, **kwargs)
 
     valid_loader_oe = torch.utils.data.DataLoader(
         dataset=dataset.valid_set_oe,
         batch_sampler=valid_sampler_oe,
-        collate_fn=collate_fn)
+        collate_fn=collate_fn,
+        **kwargs)
 
 ## 模型及优化器
 if args.pretrain_model in ['GloVe_6B', 'FastText_en']:
@@ -224,7 +231,10 @@ elif args.model == 'realnvp':
 
 flows = FlowSequential(*modules)
 if args.embedding_reduction == 'none':
-    model = TempFlowModel(embedding, flows, cond_size=args.cond_size)
+    if args.temp == 'rnn':
+        model = TempFlowModel(embedding, flows, cond_size=args.cond_size)
+    elif args.temp == 'transformer':
+        model = TransformerTempFlowModel(embedding, flows, cond_size=args.cond_size)
 else:
     model = ReduceTextFlowModel(embedding, flows)
 
@@ -238,6 +248,8 @@ model.to(device)
 
 parameters = filter(lambda p: p.requires_grad, model.parameters())
 optimizer = optim.Adam(parameters, lr=args.lr, weight_decay=1e-6)
+pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print('total number of parameters:',pytorch_total_params)
 
 ## 训练及测试
 def train():
@@ -344,7 +356,7 @@ def test(model, loader):
             text_batch, label_batch, weights = text_batch.to(device), label_batch.to(device), weights.to(device)
                 
             scores = -model(text_batch, weights)
-            ad_scores = scores.squeeze()
+            ad_scores = scores.squeeze(1)
 
             label_score += list(zip(label_batch.cpu().data.numpy().tolist(), ad_scores.cpu().data.numpy().tolist()))
     labels, scores = zip(*label_score)

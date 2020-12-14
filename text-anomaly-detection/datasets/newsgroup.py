@@ -48,6 +48,7 @@ class NEWSGROUP_DATA:
                 train_idx_outlier.append(i)
                 row['label'] = torch.tensor(1)
             row['text'] = row['text'].lower()
+        # print("train_normal {}  outlier {}".format(len(train_idx_normal), len(train_idx_outlier)))
 
         valid_idx_normal = []
         valid_idx_outlier = []
@@ -59,10 +60,14 @@ class NEWSGROUP_DATA:
                 valid_idx_outlier.append(i)
                 row['label'] = torch.tensor(1)
             row['text'] = row['text'].lower()
+        # print("val_normal {}  outlier {}".format(len(valid_idx_normal), len(valid_idx_outlier)))
 
+        test_idx = []  
         for i, row in enumerate(self.tst):
             row['label'] = torch.tensor(0) if row['label'] in self.normal_classes else torch.tensor(1)
+            test_idx.append(i)
             row['text'] = row['text'].lower()
+        # print("test {}".format(len(test_idx)))
 
         self.train_set = Subset(self.trn, train_idx_normal)
         self.valid_set = Subset(self.val, valid_idx_normal)
@@ -86,8 +91,6 @@ class NEWSGROUP_DATA:
         else:
             for row in datasets_iterator(self.train_set, self.valid_set, self.test_set, self.train_set_oe, self.valid_set_oe):
                 row['weight'] = torch.empty(0)
-
-        
 
 def load_data():
     directory = datasets.root + 'newsgroup/'
