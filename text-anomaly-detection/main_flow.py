@@ -57,7 +57,7 @@ parser.add_argument(
     default=64,
     help='input batch size for training')
 parser.add_argument(
-    '--model', default='maf', help='maf | maf-split | maf-split-glow | maf-glow | realnvp')
+    '--model', default='maf', help='maf')
 parser.add_argument(
     '--cond',
     action='store_true',
@@ -66,7 +66,7 @@ parser.add_argument(
 parser.add_argument(
     '--cond-size',
     type=int,
-    default=300,
+    default=200,
     help='dim of condition')
 parser.add_argument(
     '--temp',
@@ -75,7 +75,7 @@ parser.add_argument(
 parser.add_argument(
     '--num-blocks',
     type=int,
-    default=5,
+    default=3,
     help='number of invertible blocks')
 parser.add_argument(
     '--pretrain_model',
@@ -86,7 +86,7 @@ parser.add_argument(
     default='none',
     help='mean | max | none | sum')
 parser.add_argument(
-    '--lr', type=float, default=0.0001, help='learning rate')
+    '--lr', type=float, default=1e-3, help='learning rate')
 parser.add_argument(
     '--epochs',
     type=int,
@@ -118,7 +118,8 @@ def collate_fn(batch):
     # PyTorch RNN requires batches to be transposed for speed and integration with CUDA
     transpose = (lambda b: b.t().contiguous())
 
-    text_batch, _ = stack_and_pad_tensors([row['text'] for row in batch])
+    text_batch, length_batch = stack_and_pad_tensors([row['text'] for row in batch])
+    pos_batch, _ = stack_and_pad_tensors([torch.arange(1,l+1) for l in length_batch])
     label_batch = torch.stack([row['label'] for row in batch])
     weights = [row['weight'] for row in batch]
     # check if weights are empty
@@ -128,7 +129,7 @@ def collate_fn(batch):
         weight_batch, _ = stack_and_pad_tensors([row['weight'] for row in batch])
         weight_batch = transpose(weight_batch)
 
-    return transpose(text_batch), label_batch.float(), weight_batch
+    return transpose(text_batch), label_batch.float(), weight_batch, pos_batch
 
 train_sampler = BucketBatchSampler(dataset.train_set, batch_size=args.batch_size, drop_last=True,
                                         sort_key=lambda r: len(r['text']))
@@ -186,49 +187,18 @@ else:
     num_cond_inputs = None
 
 num_inputs = embedding.embedding_size
-num_hidden = 1024
+num_hidden = 100
+n_hidden = 2
 act = 'relu'
 
 modules = []
 if args.model == 'maf':
     for _ in range(args.num_blocks):
         modules += [
-            MADE(num_inputs, num_hidden, num_cond_inputs, act=act),
-            BatchNormFlow(num_inputs),
-            Reverse(num_inputs)
-            ]
-elif args.model == 'maf-split':
-    for _ in range(args.num_blocks):
-        modules += [
-            MADESplit(num_inputs, num_hidden, num_cond_inputs,
-                         s_act='tanh', t_act='relu'),
-            BatchNormFlow(num_inputs),
-            Reverse(num_inputs)]
-elif args.model == 'maf-glow':
-    for _ in range(args.num_blocks):
-        modules += [
-            MADE(num_inputs, num_hidden, num_cond_inputs, act=act),
-            BatchNormFlow(num_inputs),
-            InvertibleMM(num_inputs)]
-elif args.model == 'maf-split-glow':
-    for _ in range(args.num_blocks):
-        modules += [
-            MADESplit(num_inputs, num_hidden, num_cond_inputs,
-                         s_act='tanh', t_act='relu'),
-            BatchNormFlow(num_inputs),
-            InvertibleMM(num_inputs)]
-elif args.model == 'realnvp':
-    mask = torch.arange(0, num_inputs) % 2
-    mask = mask.to(device).float()
-
-    for _ in range(args.num_blocks):
-        modules += [
-            CouplingLayer(
-                num_inputs, num_hidden, mask, num_cond_inputs,
-                s_act='tanh', t_act='relu'),
+            MADE(num_inputs, num_hidden, n_hidden, num_cond_inputs, act=act),
+            Reverse(num_inputs),
             BatchNormFlow(num_inputs)
-        ]
-        mask = 1 - mask
+            ]
 
 flows = FlowSequential(*modules)
 if args.embedding_reduction == 'none':
@@ -260,19 +230,19 @@ def train():
     pbar = tqdm(total=len(train_loader.dataset))
     if args.use_oe:
         for batch_idx, (data, data_oe) in enumerate(zip(iter(train_loader), iter(train_loader_oe))):
-            text_batch, _, weights = data
+            text_batch, _, weights, pos = data
             if args.cuda:
-                text_batch, weights = text_batch.cuda(device ,non_blocking=True), weights.cuda(device, non_blocking=True)
+                text_batch, weights, pos = text_batch.cuda(device ,non_blocking=True), weights.cuda(device, non_blocking=True), pos.cuda(device, non_blocking=True)
 
-            text_batch_oe, _, weights_oe = data_oe
+            text_batch_oe, _, weights_oe, pos_oe = data_oe
             if args.cuda:
-                text_batch_oe, weights_oe = text_batch_oe.cuda(device, non_blocking=True), weights_oe.cuda(device, non_blocking=True)
+                text_batch_oe, weights_oe, pos_oe = text_batch_oe.cuda(device, non_blocking=True), weights_oe.cuda(device, non_blocking=True), pos_oe.cuda(device, non_blocking=True)
 
             optimizer.zero_grad()
 
-            data_loss_raw = model(text_batch, weights)
+            data_loss_raw = model(text_batch, pos, weights)
             data_loss = -data_loss_raw.mean()
-            oe_loss_raw = model(text_batch_oe, weights_oe)
+            oe_loss_raw = model(text_batch_oe, pos_oe, weights_oe)
             oe_loss = F.log_softmax(oe_loss_raw - torch.max(oe_loss_raw, dim=-1, keepdim=True)[0], dim=-1).mean()
             loss = data_loss - 0.5*oe_loss
             train_loss += loss.item()
@@ -284,12 +254,12 @@ def train():
                 train_loss / (batch_idx + 1)))
     else:
         for batch_idx, data in enumerate(train_loader):
-            text_batch, _, weights = data
+            text_batch, _, weights, pos = data
             if args.cuda:
-                text_batch, weights = text_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True)
+                text_batch, weights, pos = text_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True), pos.cuda(device, non_blocking=True)
 
             optimizer.zero_grad()
-            loss = -model(text_batch, weights).mean()
+            loss = -model(text_batch, pos, weights).mean()
             train_loss += loss.item()
             loss.backward()
             optimizer.step()
@@ -305,10 +275,10 @@ def train():
 
     with torch.no_grad():
         for batch_idx, data in enumerate(train_loader):
-            text_batch, _, weights = data
+            text_batch, _, weights, pos = data
             if args.cuda:
-                text_batch, weights = text_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True)
-            model(text_batch, weights)
+                text_batch, weights, pos = text_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True), pos.cuda(device, non_blocking=True)
+            model(text_batch, pos, weights)
 
     for module in model.modules():
         if isinstance(module, BatchNormFlow):
@@ -322,18 +292,18 @@ def validate(model, loader, loader_oe=None):
     pbar.set_description('Eval')
     if args.use_oe:
         for batch_idx, (data, data_oe) in enumerate(zip(iter(loader), iter(loader_oe))):
-            text_batch, _, weights = data
+            text_batch, _, weights, pos = data
             if args.cuda:
-                text_batch, weights = text_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True)
+                text_batch, weights, pos = text_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True), pos.cuda(device, non_blocking=True)
 
-            text_batch_oe, _, weights_oe = data_oe
+            text_batch_oe, _, weights_oe, pos_oe = data_oe
             if args.cuda:
-                text_batch_oe, weights_oe = text_batch_oe.cuda(device, non_blocking=True), weights_oe.cuda(device, non_blocking=True)
+                text_batch_oe, weights_oe, pos_oe = text_batch_oe.cuda(device, non_blocking=True), weights_oe.cuda(device, non_blocking=True), pos_oe.cuda(device, non_blocking=True)
 
             with torch.no_grad():
-                data_loss_raw = model(text_batch, weights)
+                data_loss_raw = model(text_batch, pos, weights)
                 data_loss = -data_loss_raw.sum().item()
-                oe_loss_raw = model(text_batch_oe, weights_oe)
+                oe_loss_raw = model(text_batch_oe, pos_oe, weights_oe)
                 oe_loss = F.log_softmax(oe_loss_raw - torch.max(oe_loss_raw, dim=-1, keepdim=True)[0], dim=-1).sum().item()
                 val_loss += (data_loss - 0.5*oe_loss)
 
@@ -342,10 +312,10 @@ def validate(model, loader, loader_oe=None):
                 val_loss / pbar.n))
     else:
         for batch_idx, data in enumerate(loader):
-            text_batch, _, weights = data
-            text_batch, weights = text_batch.to(device), weights.to(device)
+            text_batch, _, weights, pos = data
+            text_batch, weights, pos = text_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True), pos.cuda(device, non_blocking=True)
             with torch.no_grad():
-                val_loss += -model(text_batch, weights).sum().item() 
+                val_loss += -model(text_batch, pos, weights).sum().item() 
             pbar.update(text_batch.size(1))
             pbar.set_description('Val, Log likelihood in nats: {:.6f}'.format(
                 -val_loss / pbar.n))
@@ -359,11 +329,11 @@ def test(model, loader):
     label_score = []
     with torch.no_grad():
         for batch_idx, data in enumerate(loader):
-            text_batch, label_batch, weights = data
+            text_batch, label_batch, weights, pos = data
             if args.cuda:
-                text_batch, label_batch, weights = text_batch.cuda(device, non_blocking=True), label_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True)
+                text_batch, label_batch, weights, pos = text_batch.cuda(device, non_blocking=True), label_batch.cuda(device, non_blocking=True), weights.cuda(device, non_blocking=True), pos.cuda(device, non_blocking=True)
                 
-            scores = -model(text_batch, weights)
+            scores = -model(text_batch, pos, weights)
             ad_scores = scores.squeeze(1)
 
             label_score += list(zip(label_batch.cpu().data.numpy().tolist(), ad_scores.cpu().data.numpy().tolist()))

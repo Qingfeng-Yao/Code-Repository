@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from pytorch_pretrained_bert.modeling import BertModel
 
+import util
+
 ## ---------------
 ## 嵌入相关
 class MyEmbedding(nn.Embedding):
@@ -154,9 +156,9 @@ class MADE(nn.Module):
     def __init__(self,
                  num_inputs,
                  num_hidden,
+                 n_hidden,
                  num_cond_inputs=None,
-                 act='relu',
-                 pre_exp_tanh=False):
+                 act='relu'):
         super(MADE, self).__init__()
 
         activations = {'relu': nn.ReLU, 'sigmoid': nn.Sigmoid, 'tanh': nn.Tanh}
@@ -164,18 +166,22 @@ class MADE(nn.Module):
 
         input_mask = get_mask(
             num_inputs, num_hidden, num_inputs, mask_type='input')
-        hidden_mask = get_mask(num_hidden, num_hidden, num_inputs)
+        hidden_masks = []
+        for _ in range(n_hidden):
+            hidden_masks.append(get_mask(num_hidden, num_hidden, num_inputs))
         output_mask = get_mask(
             num_hidden, num_inputs * 2, num_inputs, mask_type='output')
 
         self.joiner = nn.MaskedLinear(num_inputs, num_hidden, input_mask,
                                       num_cond_inputs)
 
-        self.trunk = nn.Sequential(act_func(),
-                                   nn.MaskedLinear(num_hidden, num_hidden,
-                                                   hidden_mask), act_func(),
-                                   nn.MaskedLinear(num_hidden, num_inputs * 2,
-                                                   output_mask))
+        self.trunk = []
+        for m in hidden_masks:
+            self.trunk += [act_func(), nn.MaskedLinear(num_hidden, num_hidden,
+                                                   m)]
+        self.trunk += [act_func(), nn.MaskedLinear(num_hidden, num_inputs * 2,
+                                                   output_mask)]
+        self.trunk = nn.Sequential(*self.trunk)
 
     def forward(self, inputs, cond_inputs=None, mode='direct'):
         if mode == 'direct':
@@ -193,132 +199,8 @@ class MADE(nn.Module):
                     a[:, i_col]) + m[:, i_col]
             return x, -a.sum(-1, keepdim=True)
 
-class MADESplit(nn.Module):
-    def __init__(self,
-                 num_inputs,
-                 num_hidden,
-                 num_cond_inputs=None,
-                 s_act='tanh',
-                 t_act='relu',
-                 pre_exp_tanh=False):
-        super(MADESplit, self).__init__()
-
-        self.pre_exp_tanh = pre_exp_tanh
-
-        activations = {'relu': nn.ReLU, 'sigmoid': nn.Sigmoid, 'tanh': nn.Tanh}
-
-        input_mask = get_mask(num_inputs, num_hidden, num_inputs,
-                              mask_type='input')
-        hidden_mask = get_mask(num_hidden, num_hidden, num_inputs)
-        output_mask = get_mask(num_hidden, num_inputs, num_inputs,
-                               mask_type='output')
-
-        act_func = activations[s_act]
-        self.s_joiner = nn.MaskedLinear(num_inputs, num_hidden, input_mask,
-                                      num_cond_inputs)
-
-        self.s_trunk = nn.Sequential(act_func(),
-                                   nn.MaskedLinear(num_hidden, num_hidden,
-                                                   hidden_mask), act_func(),
-                                   nn.MaskedLinear(num_hidden, num_inputs,
-                                                   output_mask))
-
-        act_func = activations[t_act]
-        self.t_joiner = nn.MaskedLinear(num_inputs, num_hidden, input_mask,
-                                      num_cond_inputs)
-
-        self.t_trunk = nn.Sequential(act_func(),
-                                   nn.MaskedLinear(num_hidden, num_hidden,
-                                                   hidden_mask), act_func(),
-                                   nn.MaskedLinear(num_hidden, num_inputs,
-                                                   output_mask))
-        
-    def forward(self, inputs, cond_inputs=None, mode='direct'):
-        if mode == 'direct':
-            h = self.s_joiner(inputs, cond_inputs)
-            m = self.s_trunk(h)
-            
-            h = self.t_joiner(inputs, cond_inputs)
-            a = self.t_trunk(h)
-
-            if self.pre_exp_tanh:
-                a = torch.tanh(a)
-            
-            u = (inputs - m) * torch.exp(-a)
-            return u, -a.sum(-1, keepdim=True)
-
-        else:
-            x = torch.zeros_like(inputs)
-            for i_col in range(inputs.shape[-1]):
-                h = self.s_joiner(x, cond_inputs)
-                m = self.s_trunk(h)
-
-                h = self.t_joiner(x, cond_inputs)
-                a = self.t_trunk(h)
-
-                if self.pre_exp_tanh:
-                    a = torch.tanh(a)
-
-                x[:, i_col] = inputs[:, i_col] * torch.exp(
-                    a[:, i_col]) + m[:, i_col]
-            return x, -a.sum(-1, keepdim=True)
-
-class CouplingLayer(nn.Module):
-    def __init__(self,
-                 num_inputs,
-                 num_hidden,
-                 mask,
-                 num_cond_inputs=None,
-                 s_act='tanh',
-                 t_act='relu'):
-        super(CouplingLayer, self).__init__()
-
-        self.num_inputs = num_inputs
-        self.mask = mask
-
-        activations = {'relu': nn.ReLU, 'sigmoid': nn.Sigmoid, 'tanh': nn.Tanh}
-        s_act_func = activations[s_act]
-        t_act_func = activations[t_act]
-
-        if num_cond_inputs is not None:
-            total_inputs = num_inputs + num_cond_inputs
-        else:
-            total_inputs = num_inputs
-            
-        self.scale_net = nn.Sequential(
-            nn.Linear(total_inputs, num_hidden), s_act_func(),
-            nn.Linear(num_hidden, num_hidden), s_act_func(),
-            nn.Linear(num_hidden, num_inputs))
-        self.translate_net = nn.Sequential(
-            nn.Linear(total_inputs, num_hidden), t_act_func(),
-            nn.Linear(num_hidden, num_hidden), t_act_func(),
-            nn.Linear(num_hidden, num_inputs))
-
-        def init(m):
-            if isinstance(m, nn.Linear):
-                m.bias.data.fill_(0)
-                nn.init.orthogonal_(m.weight.data)
-
-    def forward(self, inputs, cond_inputs=None, mode='direct'):
-        mask = self.mask
-        
-        masked_inputs = inputs * mask
-        if cond_inputs is not None:
-            masked_inputs = torch.cat([masked_inputs, cond_inputs], -1)
-        
-        if mode == 'direct':
-            log_s = self.scale_net(masked_inputs) * (1 - mask)
-            t = self.translate_net(masked_inputs) * (1 - mask)
-            s = torch.exp(log_s)
-            return inputs * s + t, log_s.sum(-1, keepdim=True)
-        else:
-            log_s = self.scale_net(masked_inputs) * (1 - mask)
-            t = self.translate_net(masked_inputs) * (1 - mask)
-            s = torch.exp(-log_s)
-            return (inputs - t) * s, -log_s.sum(-1, keepdim=True)
-
 class BatchNormFlow(nn.Module):
-    def __init__(self, num_inputs, momentum=0.0, eps=1e-5):
+    def __init__(self, num_inputs, momentum=0.9, eps=1e-5):
         super(BatchNormFlow, self).__init__()
 
         self.log_gamma = nn.Parameter(torch.zeros(num_inputs))
@@ -334,7 +216,7 @@ class BatchNormFlow(nn.Module):
             if self.training:
                 self.batch_mean = inputs.reshape(-1, inputs.shape[-1]).mean(0)
                 self.batch_var = (
-                    inputs - self.batch_mean).pow(2).reshape(-1, inputs.shape[-1]).mean(0) + self.eps
+                    inputs - self.batch_mean).pow(2).reshape(-1, inputs.shape[-1]).mean(0)
 
                 self.running_mean.mul_(self.momentum)
                 self.running_var.mul_(self.momentum)
@@ -350,9 +232,9 @@ class BatchNormFlow(nn.Module):
                 mean = self.running_mean
                 var = self.running_var
 
-            x_hat = (inputs - mean) / var.sqrt()
+            x_hat = (inputs - mean) / (var+self.eps).sqrt()
             y = torch.exp(self.log_gamma) * x_hat + self.beta
-            return y, (self.log_gamma - 0.5 * torch.log(var)).sum(
+            return y, (self.log_gamma - 0.5 * torch.log(var + self.eps)).sum(
                 -1, keepdim=True)
         else:
             if self.training:
@@ -364,9 +246,9 @@ class BatchNormFlow(nn.Module):
 
             x_hat = (inputs - self.beta) / torch.exp(self.log_gamma)
 
-            y = x_hat * var.sqrt() + mean
+            y = x_hat * (var+self.eps).sqrt() + mean
 
-            return y, (-self.log_gamma + 0.5 * torch.log(var)).sum(
+            return y, (-self.log_gamma + 0.5 * torch.log(var+self.eps)).sum(
                 -1, keepdim=True)
 
 class Reverse(nn.Module):
@@ -382,23 +264,7 @@ class Reverse(nn.Module):
         else:
             return inputs[:, :, self.inv_perm], torch.zeros(
                 inputs.size(0), inputs.size(1), 1, device=inputs.device)
-
-class InvertibleMM(nn.Module):
-    def __init__(self, num_inputs):
-        super(InvertibleMM, self).__init__()
-        self.W = nn.Parameter(torch.Tensor(num_inputs, num_inputs))
-        nn.init.orthogonal_(self.W)
-
-    def forward(self, inputs, cond_inputs=None, mode='direct'):
-        if mode == 'direct':
-            return inputs @ self.W, torch.slogdet(
-                self.W)[-1].unsqueeze(0).unsqueeze(0).unsqueeze(0).repeat(
-                    inputs.size(0), inputs.size(1), 1)
-        else:
-            return inputs @ torch.inverse(self.W), -torch.slogdet(
-                self.W)[-1].unsqueeze(0).unsqueeze(0).unsqueeze(0).repeat(
-                    inputs.size(0), inputs.size(1), 1)
-
+ 
 class FlowSequential(nn.Sequential):
     def forward(self, inputs, cond_inputs=None, mode='direct', logdets=None):
         self.num_inputs = inputs.size(-1)
@@ -481,7 +347,7 @@ class ReduceTextFlowModel(nn.Module):
         self.hidden_size = pretrained_model.embedding_size
         self.flows = flows
 
-    def forward(self, x, weights=None):
+    def forward(self, x, pos=None, weights=None):
         # x.shape = (sentence_length, batch_size)
         # weights.shape = (sentence_length, batch_size)
         
@@ -532,65 +398,98 @@ class CVDDNet(nn.Module):
         return cosine_dists, context_weights
 
 class TempFlowModel(nn.Module):
-    def __init__(self, pretrained_model, flows, cond_size=300):
+    def __init__(self, pretrained_model, flows, cond_size=200):
         super().__init__()
 
         self.pretrained_model = pretrained_model
         self.embedding_size = pretrained_model.embedding_size
-        self.hidden_size = 512
+        self.hidden_size = 40
         self.num_layers = 2
         self.cond_size = cond_size
 
+        self.embed_dim = 1
+        self.embed = nn.Embedding(
+            num_embeddings=self.embedding_size, embedding_dim=self.embed_dim
+        )
+
         self.rnn = nn.GRU(
-            input_size=self.embedding_size,
+            input_size=self.embedding_size * self.embed_dim+2*self.embedding_size,
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,
             dropout=0.1,
-            bidirectional=True
+            batch_first=True,
         )
-        self.out = nn.Linear(self.hidden_size * 2, self.cond_size)
+        self.out = nn.Linear(self.hidden_size, self.cond_size)
 
         self.flows = flows
 
-    def forward(self, x, weights=None):
+
+    def forward(self, x, pos, weights=None):
         # x.shape = (sentence_length, batch_size)
+        # pos.shape = (batch_size, sentence_length)
+
+        pos_emb_model = nn.Embedding.from_pretrained(util.get_sinusoid_encoding_table(x.shape[0]+1, self.embedding_size),freeze=True).to(x.device)
+        pos_emb = pos_emb_model(pos)
+        # pos_emb = (batch_size, sentence_length, embedding_size)
 
         inputs = self.pretrained_model(x)
         # inputs.shape = (sentence_length, batch_size, embedding_size)
-        inputs += torch.rand_like(inputs).to(x.device)
 
-        hidden = torch.zeros(2*self.num_layers, x.shape[1], self.hidden_size).to(x.device)
-        # hidden : [num_layers * num_directions, batch_size, hidden_size]
+        sequences = inputs[:-1, :, :]
+        sequences = sequences.permute(1, 0, 2)
+        # sequences.shape = (batch_size, sentence_length-1, embedding_size)
+        
+        target_dimension_indicator = torch.arange(self.embedding_size).unsqueeze(0).repeat(x.shape[1],1).to(x.device)
+        index_embeddings = self.embed(target_dimension_indicator)
+        repeated_index_embeddings = (
+            index_embeddings.unsqueeze(1)
+            .expand(-1, x.shape[0]-1, -1, -1)
+            .reshape((-1, x.shape[0]-1, self.embedding_size * self.embed_dim))
+        )
+        # repeated_index_embeddings = (batch_size, sentence_length-1, embedding_size*embed_dim)
+
+        outs = torch.cat((sequences, repeated_index_embeddings, pos_emb[:, 1: ,:]), dim=-1)
+        # outs = (batch_size, sentence_length-1, 2*embedding_size+embedding_size*embed_dim)
+        
+        hidden = None
 
         self.rnn.flatten_parameters()
-        outputs, hidden = self.rnn(inputs, hidden)
-        # outputs : [sentence_length, batch_size, num_directions * hidden_size]
-        # hidden : [num_layers * num_directions, batch_size, hidden_size]
+        outputs, hidden = self.rnn(outs, hidden)
+        # outputs : [batch_size, sentence_length-1, hidden_size]
+        # hidden : [num_layers, batch_size, hidden_size]
       
         outputs = self.out(outputs)
-        inputs = inputs.permute(1, 0, 2)
-        outputs = outputs.permute(1, 0, 2)
+        # outputs : [batch_size, sentence_length-1, cond_size]
 
-        likelihoods = self.flows.log_probs(inputs, outputs)
-        # likelihoods : [batch_size, sentence_length, 1]
+        inputs += torch.rand_like(inputs).to(x.device)
+        inputs = inputs.permute(1, 0, 2)
+
+        likelihoods = self.flows.log_probs(inputs[:, 1:, :], outputs)
+        # likelihoods : [batch_size, sentence_length-1, 1]
         log_probs = torch.mean(likelihoods, dim=1)
 
         return log_probs
 
 class TransformerTempFlowModel(nn.Module):
-    def __init__(self, pretrained_model, flows, cond_size=300):
+    def __init__(self, pretrained_model, flows, cond_size=200):
         super().__init__()
 
         self.pretrained_model = pretrained_model
         self.embedding_size = pretrained_model.embedding_size
-        self.d_model = 512
+        self.d_model = 16
         self.num_heads = 4
         self.cond_size = cond_size
         self.num_encoder_layers = 3
         self.num_decoder_layers = 3
         self.dim_feedforward_scale = 4
 
-        self.encoder_input = nn.Linear(self.embedding_size, self.d_model)
+        self.embed_dim = 1
+        self.embed = nn.Embedding(
+            num_embeddings=self.embedding_size, embedding_dim=self.embed_dim
+        )
+
+        self.encoder_input = nn.Linear(self.embedding_size * self.embed_dim+2*self.embedding_size, self.d_model)
+        self.decoder_input = nn.Linear(self.embedding_size * self.embed_dim+2*self.embedding_size, self.d_model)
 
         self.transformer = nn.Transformer(
             d_model=self.d_model,
@@ -606,24 +505,57 @@ class TransformerTempFlowModel(nn.Module):
 
         self.flows = flows
 
-    def forward(self, x, weights=None):
+
+    def forward(self, x, pos, weights=None):
         # x.shape = (sentence_length, batch_size)
+        # pos.shape = (batch_size, sentence_length)
+
+        pos_emb_model = nn.Embedding.from_pretrained(util.get_sinusoid_encoding_table(x.shape[0]+1, self.embedding_size),freeze=True).to(x.device)
+        pos_emb = pos_emb_model(pos)
+        # pos_emb = (batch_size, sentence_length, embedding_size)
 
         inputs = self.pretrained_model(x)
         # inputs.shape = (sentence_length, batch_size, embedding_size)
-        inputs += torch.rand_like(inputs).to(x.device)
+
+        sequences = inputs[:-1, :, :]
+        sequences = sequences.permute(1, 0, 2)
+        # sequences.shape = (batch_size, sentence_length-1, embedding_size)
+        
+        target_dimension_indicator = torch.arange(self.embedding_size).unsqueeze(0).repeat(x.shape[1],1).to(x.device)
+        index_embeddings = self.embed(target_dimension_indicator)
+        repeated_index_embeddings = (
+            index_embeddings.unsqueeze(1)
+            .expand(-1, x.shape[0]-1, -1, -1)
+            .reshape((-1, x.shape[0]-1, self.embedding_size * self.embed_dim))
+        )
+        # repeated_index_embeddings = (batch_size, sentence_length-1, embedding_size*embed_dim)
+
+        outs = torch.cat((sequences, repeated_index_embeddings, pos_emb[:, 1: ,:]), dim=-1)
+        # outs = (batch_size, sentence_length-1, 2*embedding_size+embedding_size*embed_dim)
+
+        enc_inputs = outs[:, :-1, :]
+        dec_inputs = outs
 
         enc_out = self.transformer.encoder(
-            self.encoder_input(inputs.permute(1, 0, 2)).permute(1, 0, 2)
+            self.encoder_input(enc_inputs).permute(1, 0, 2)
         )
 
-        outputs = enc_out.permute(1, 0, 2)
+        tgt_mask = self.transformer.generate_square_subsequent_mask(x.shape[0]-1).to(x.device)
+        dec_output = self.transformer.decoder(
+            self.decoder_input(dec_inputs).permute(1, 0, 2),
+            enc_out,
+            tgt_mask=tgt_mask,
+        )
+
+        outputs = dec_output.permute(1, 0, 2)
+        outputs = self.out(outputs)
+        # outputs : [batch_size, sentence_length-1, cond_size]
+
+        inputs += torch.rand_like(inputs).to(x.device)
         inputs = inputs.permute(1, 0, 2)
 
-        outputs = self.out(outputs)
-
-        likelihoods = self.flows.log_probs(inputs, outputs)
-        # likelihoods : [batch_size, sentence_length, 1]
+        likelihoods = self.flows.log_probs(inputs[:, 1:, :], outputs)
+        # likelihoods : [batch_size, sentence_length-1, 1]
         log_probs = torch.mean(likelihoods, dim=1)
 
         return log_probs

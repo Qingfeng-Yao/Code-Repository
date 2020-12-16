@@ -86,7 +86,7 @@ if args.cuda:
     torch.backends.cudnn.deterministic = True
 
 ## 数据下载
-dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal_class=args.normal_class)
+dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal_class=args.normal_class, append_sos=False, append_eos=False)
 
 def collate_fn(batch):
     """ list of tensors to a batch tensors """
