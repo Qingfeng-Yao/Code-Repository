@@ -32,10 +32,7 @@
     - 嵌入均值、嵌入最大值、嵌入的tfidf加权和
     - 基于RNN的条件流: 使用GRU、双向
 - 流模型
-    - MAF、MAF-split、MAF-glow、MAF-split-glow
-    - RealNVP
-
-
+    - MAF
 
 
 

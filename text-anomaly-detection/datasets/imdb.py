@@ -1,7 +1,8 @@
 from torchnlp.datasets import imdb_dataset
 from torchnlp.datasets.dataset import Dataset
-from torchnlp.encoders.text import SpacyEncoder
 from torchnlp.utils import datasets_iterator
+from torchnlp.encoders.text import SpacyEncoder
+from torchnlp.encoders.text.default_reserved_tokens import DEFAULT_SOS_TOKEN
 
 import torch
 from torch.utils.data import Subset
@@ -14,7 +15,7 @@ from . import util
 
 class IMDB_DATA:
 
-    def __init__(self, tokenize='spacy', normal_class=0, use_tfidf_weights=False):
+    def __init__(self, tokenize='spacy', normal_class=0, append_sos=True, append_eos=True, use_tfidf_weights=False):
         self.n_classes = 2 
         classes = ['pos', 'neg']
         self.normal_classes = [classes[normal_class]]
@@ -82,7 +83,11 @@ class IMDB_DATA:
 
         # Encode
         for row in datasets_iterator(self.train_set, self.valid_set, self.test_set, self.train_set_oe, self.valid_set_oe):
-            row['text'] = self.encoder.encode(row['text'])
+            if append_sos:
+                sos_id = self.encoder.stoi[DEFAULT_SOS_TOKEN]
+                row['text'] = torch.cat((torch.tensor(sos_id).unsqueeze(0), self.encoder.encode(row['text'])))
+            else:
+                row['text'] = self.encoder.encode(row['text'])
 
         # Compute tf-idf weights
         if use_tfidf_weights:

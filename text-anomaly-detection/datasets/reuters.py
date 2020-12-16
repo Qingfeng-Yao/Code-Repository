@@ -2,8 +2,9 @@ import torch
 from torch.utils.data import Subset
 
 from torchnlp.datasets.dataset import Dataset
-from torchnlp.encoders.text import SpacyEncoder
 from torchnlp.utils import datasets_iterator
+from torchnlp.encoders.text import SpacyEncoder
+from torchnlp.encoders.text.default_reserved_tokens import DEFAULT_SOS_TOKEN
 
 import nltk
 from nltk.corpus import reuters
@@ -14,7 +15,7 @@ from . import util
 
 class REUTERS_DATA:
 
-    def __init__(self, tokenize='spacy', normal_class=0, use_tfidf_weights=False):
+    def __init__(self, tokenize='spacy', normal_class=0, append_sos=True, append_eos=True, use_tfidf_weights=False):
         self.n_classes = 2 
         classes = ['earn', 'acq', 'crude', 'trade', 'money-fx', 'interest', 'ship']
         self.normal_classes = [classes[normal_class]]
@@ -77,13 +78,17 @@ class REUTERS_DATA:
 
         text_corpus = [row['text'] for row in datasets_iterator(self.train_set, self.valid_set, self.test_set, self.train_set_oe, self.valid_set_oe)]
         if tokenize == 'spacy':
-            self.encoder = SpacyEncoder(text_corpus, min_occurrences=3, append_eos=False)
+            self.encoder = SpacyEncoder(text_corpus, min_occurrences=3, append_eos=append_eos)
         if tokenize == 'bert':
             self.encoder = util.MyBertTokenizer.from_pretrained('bert-base-uncased', cache_dir='data/bert_cache')
 
         # Encode
         for row in datasets_iterator(self.train_set, self.valid_set, self.test_set, self.train_set_oe, self.valid_set_oe):
-            row['text'] = self.encoder.encode(row['text'])
+            if append_sos:
+                sos_id = self.encoder.stoi[DEFAULT_SOS_TOKEN]
+                row['text'] = torch.cat((torch.tensor(sos_id).unsqueeze(0), self.encoder.encode(row['text'])))
+            else:
+                row['text'] = self.encoder.encode(row['text'])
 
         # Compute tf-idf weights
         if use_tfidf_weights:
