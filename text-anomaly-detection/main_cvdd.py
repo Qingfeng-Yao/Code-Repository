@@ -32,7 +32,15 @@ parser.add_argument(
 parser.add_argument(
     '--dataset',
     default='REUTERS_DATA',
-    help='REUTERS_DATA | NEWSGROUP_DATA | IMDB_DATA')
+    help='REUTERS_DATA | NEWSGROUP_DATA | IMDB_DATA | MIXED_DATA')
+parser.add_argument(
+    '--normal_dataset',
+    default='reuters',
+    help='reuters | newsgroup')
+parser.add_argument(
+    '--outlier_dataset',
+    default='newsgroup',
+    help='newsgroup | reuters')
 parser.add_argument(
     '--normal_class', 
     type=int, 
@@ -86,7 +94,10 @@ if args.cuda:
     torch.backends.cudnn.deterministic = True
 
 ## 数据下载
-dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal_class=args.normal_class, append_sos=False, append_eos=False)
+if args.dataset == 'MIXED_DATA':
+    dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal=args.normal_dataset, outlier=args.outlier_dataset, append_sos=False, append_eos=False)
+else:
+    dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal_class=args.normal_class, append_sos=False, append_eos=False)
 
 def collate_fn(batch):
     """ list of tensors to a batch tensors """

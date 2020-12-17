@@ -461,6 +461,7 @@ class TempFlowModel(nn.Module):
         outputs = self.out(outputs)
         # outputs : [batch_size, sentence_length-1, cond_size]
 
+        # dequantize
         inputs += torch.rand_like(inputs).to(x.device)
         inputs = inputs.permute(1, 0, 2)
 
@@ -551,6 +552,7 @@ class TransformerTempFlowModel(nn.Module):
         outputs = self.out(outputs)
         # outputs : [batch_size, sentence_length-1, cond_size]
 
+        # dequantize
         inputs += torch.rand_like(inputs).to(x.device)
         inputs = inputs.permute(1, 0, 2)
 
