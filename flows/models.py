@@ -5,6 +5,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import util
+
+## 流模型
 def get_mask(in_features, out_features, in_flow_features, mask_type=None):
     if mask_type == 'input':
         in_degrees = torch.arange(in_features) % in_flow_features
@@ -87,6 +90,124 @@ class MADE(nn.Module):
                 x[:, i_col] = inputs[:, i_col] * torch.exp(
                     a[:, i_col]) + m[:, i_col]
             return x, -a.sum(-1, keepdim=True)
+
+def create_degrees(input_dim,
+                    hidden_dims,
+                    input_order='left-to-right',
+                    hidden_order='left-to-right'):
+    degrees = []
+    input_degrees = np.arange(1, input_dim + 1)
+    if input_order == 'right-to-left':
+        input_degrees = np.flip(input_degrees, 0)
+    elif input_order == 'random':
+        np.random.shuffle(input_degrees)
+    
+    degrees.append(input_degrees)
+
+    for units in hidden_dims:
+        if hidden_order == 'random':
+            min_prev_degree = min(np.min(degrees[-1]), input_dim - 1)
+            hidden_degrees = np.random.randint(
+                    low=min_prev_degree, high=input_dim, size=units)
+        elif hidden_order == 'left-to-right':
+            hidden_degrees = (np.arange(units) % max(1, input_dim - 1) +
+                                                min(1, input_dim - 1))
+        degrees.append(hidden_degrees)
+    return degrees
+
+def create_masks(input_dim,
+                hidden_dims,
+                input_order='left-to-right',
+                hidden_order='left-to-right'):
+    degrees = create_degrees(input_dim, hidden_dims, input_order, hidden_order)
+    masks = []
+    # Create input-to-hidden and hidden-to-hidden masks.
+    for input_degrees, output_degrees in zip(degrees[:-1], degrees[1:]):
+        mask = torch.Tensor(input_degrees[:, np.newaxis] <= output_degrees).float()
+        masks.append(mask)
+
+    # Create hidden-to-output mask.
+    mask = torch.Tensor(degrees[-1][:, np.newaxis] < degrees[0]).float()
+    masks.append(mask)
+    return masks
+
+class MaskedLinearDis(nn.Linear):
+    
+    def __init__(self, in_features, out_features, bias=True):
+        super().__init__(in_features, out_features, bias)        
+        self.register_buffer('mask', torch.ones(out_features, in_features))
+        
+    def set_mask(self, mask): 
+        mask = mask.long().T
+        self.mask.data.copy_(mask)
+        # if all of the inputs are zero, need to ensure the bias is zeroed out!
+        self.bias_all_zero_mask = (mask.sum(dim=1)!=0).float()
+        
+    def forward(self, input):
+        self.bias_all_zero_mask = self.bias_all_zero_mask.to(input.device)
+        return F.linear(input, self.mask * self.weight, self.bias_all_zero_mask * self.bias)
+
+class MADE_dis(nn.Module):
+    def __init__(self,
+                input_shape, 
+                units,
+                hidden_dims,
+                input_order='left-to-right',
+                hidden_order='left-to-right',
+                use_bias=True):
+        super(MADE_dis, self).__init__()
+        self.units = int(units)
+        self.hidden_dims = hidden_dims
+        self.input_order = input_order
+        self.hidden_order = hidden_order
+        self.use_bias = use_bias
+        self.network = nn.ModuleList()
+        self.build(input_shape)
+
+    def build(self, input_shape):
+        length = input_shape[-2]
+        channels = input_shape[-1]
+        masks = create_masks(input_dim=length,
+                            hidden_dims=self.hidden_dims,
+                            input_order=self.input_order,
+                            hidden_order=self.hidden_order)
+
+        # Input-to-hidden layer: [..., length, channels] -> [..., hidden_dims[0]]
+        mask = masks[0]
+        mask = mask.unsqueeze(1).repeat(1, channels, 1)
+        mask = mask.view(mask.shape[0] * channels, mask.shape[-1])
+        if self.hidden_dims:
+            layer = MaskedLinearDis(channels*length, self.hidden_dims[0])
+            layer.set_mask(mask)
+
+            self.network.append(layer)
+            self.network.append(nn.ReLU())
+
+        # Hidden-to-hidden layers: [..., hidden_dims[l-1]] -> [..., hidden_dims[l]]
+        for ind in range(1, len(self.hidden_dims)-1):
+            layer = MaskedLinearDis(self.hidden_dims[ind], self.hidden_dims[ind+1])
+            layer.set_mask(masks[ind])
+
+            self.network.append(layer)
+            self.network.append(nn.ReLU())
+
+        # Hidden-to-output layer: [..., hidden_dims[-1]] -> [..., length, units].
+        if self.hidden_dims:
+            mask = masks[-1]
+        mask = mask.unsqueeze(-1).repeat(1, 1, self.units)
+        mask = mask.view(mask.shape[0], mask.shape[1] * self.units)
+        layer = MaskedLinearDis(self.hidden_dims[-1],channels*length)
+        layer.set_mask(mask)
+
+        self.network.append(layer)
+        self.network = nn.Sequential(*self.network)
+
+    def forward(self, inputs):
+        input_shapes = inputs.shape
+        inputs = inputs.view(-1, input_shapes[-1]*input_shapes[-2])
+        inputs = self.network(inputs)
+        out = inputs.view(-1, input_shapes[-2], self.units)
+        return out
 
 class BatchNormFlow(nn.Module):
     def __init__(self, num_inputs, momentum=0.9, eps=1e-5):
@@ -198,3 +319,45 @@ class MAF(nn.Module):
     def forward(self, inputs, cond_inputs = None):
 
         return -self.flows.log_probs(inputs, cond_inputs)
+
+class DiscreteAutoregressiveFlow(nn.Module):
+    def __init__(self, layer, temperature, vocab_size):
+        super().__init__()
+        self.layer = layer
+        self.temperature = temperature
+        self.vocab_size = vocab_size
+
+    def forward(self, inputs):
+        net = self.layer(inputs)
+        if net.shape[-1] == 2 * self.vocab_size:
+            loc, scale = torch.split(net, self.vocab_size, dim=-1)
+            scale = util.one_hot_argmax(scale, self.temperature).type(inputs.dtype)
+            scaled_inputs = util.one_hot_multiply(inputs, scale)
+        elif net.shape[-1] == self.vocab_size:
+            loc = net
+            scaled_inputs = inputs
+        else:
+            raise ValueError('Output of layer does not have compatible dimensions.')
+        loc = util.one_hot_argmax(loc, self.temperature).type(inputs.dtype)
+        outputs = util.one_hot_add(scaled_inputs, loc)
+        return outputs
+
+class DiscreteAutoFlowModel(nn.Module):
+    # combines all of the discrete flow layers into a single model
+    def __init__(self, flows):
+        super().__init__()
+        self.flows = nn.ModuleList(flows)
+
+    def forward(self, z):
+         # from the data to the latent space
+        for flow in self.flows:
+            z = flow.forward(z)
+        return z
+
+    def reverse(self, x):
+        # from the latent space to the data
+        for flow in self.flows[::-1]:
+            x = flow.reverse(x)
+        return x
+
+## 语言模型
