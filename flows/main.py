@@ -125,7 +125,7 @@ num_inputs = dataset.n_dims
 num_hidden = {
     'MNIST_DATA': 1024
 }[args.dataset]
-n_hidden = 1
+n_hidden = 2
 act = 'relu'
 
 modules = []
@@ -133,8 +133,8 @@ if args.model == 'maf':
     for _ in range(args.num_blocks):
         modules += [
             MADE(num_inputs, num_hidden, n_hidden, num_cond_inputs, act=act),
-            Reverse(num_inputs),
-            BatchNormFlow(num_inputs)
+            BatchNormFlow(num_inputs),
+            Reverse(num_inputs)
             ]
 
 flows = FlowSequential(*modules)
