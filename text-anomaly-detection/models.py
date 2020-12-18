@@ -425,7 +425,7 @@ class TempFlowModel(nn.Module):
 
 
     def forward(self, x, pos, weights=None):
-        # x.shape = (sentence_length, batch_size)
+        # x.shape = (batch_size, sentence_length)
         # pos.shape = (batch_size, sentence_length)
 
         pos_emb_model = nn.Embedding.from_pretrained(util.get_sinusoid_encoding_table(x.shape[0]+1, self.embedding_size),freeze=True).to(x.device)
@@ -433,18 +433,17 @@ class TempFlowModel(nn.Module):
         # pos_emb = (batch_size, sentence_length, embedding_size)
 
         inputs = self.pretrained_model(x)
-        # inputs.shape = (sentence_length, batch_size, embedding_size)
+        # inputs.shape = (batch_size, sentence_length, embedding_size)
 
-        sequences = inputs[:-1, :, :]
-        sequences = sequences.permute(1, 0, 2)
+        sequences = inputs[:, :-1, :]
         # sequences.shape = (batch_size, sentence_length-1, embedding_size)
         
-        target_dimension_indicator = torch.arange(self.embedding_size).unsqueeze(0).repeat(x.shape[1],1).to(x.device)
+        target_dimension_indicator = torch.arange(self.embedding_size).unsqueeze(0).repeat(x.shape[0],1).to(x.device)
         index_embeddings = self.embed(target_dimension_indicator)
         repeated_index_embeddings = (
             index_embeddings.unsqueeze(1)
-            .expand(-1, x.shape[0]-1, -1, -1)
-            .reshape((-1, x.shape[0]-1, self.embedding_size * self.embed_dim))
+            .expand(-1, x.shape[1]-1, -1, -1)
+            .reshape((-1, x.shape[1]-1, self.embedding_size * self.embed_dim))
         )
         # repeated_index_embeddings = (batch_size, sentence_length-1, embedding_size*embed_dim)
 
@@ -463,7 +462,6 @@ class TempFlowModel(nn.Module):
 
         # dequantize
         inputs += torch.rand_like(inputs).to(x.device)
-        inputs = inputs.permute(1, 0, 2)
 
         likelihoods = self.flows.log_probs(inputs[:, 1:, :], outputs)
         # likelihoods : [batch_size, sentence_length-1, 1]
@@ -508,7 +506,7 @@ class TransformerTempFlowModel(nn.Module):
 
 
     def forward(self, x, pos, weights=None):
-        # x.shape = (sentence_length, batch_size)
+        # x.shape = (batch_size, sentence_length)
         # pos.shape = (batch_size, sentence_length)
 
         pos_emb_model = nn.Embedding.from_pretrained(util.get_sinusoid_encoding_table(x.shape[0]+1, self.embedding_size),freeze=True).to(x.device)
@@ -516,18 +514,17 @@ class TransformerTempFlowModel(nn.Module):
         # pos_emb = (batch_size, sentence_length, embedding_size)
 
         inputs = self.pretrained_model(x)
-        # inputs.shape = (sentence_length, batch_size, embedding_size)
+        # inputs.shape = (batch_size, sentence_length, embedding_size)
 
-        sequences = inputs[:-1, :, :]
-        sequences = sequences.permute(1, 0, 2)
+        sequences = inputs[:, :-1, :]
         # sequences.shape = (batch_size, sentence_length-1, embedding_size)
         
-        target_dimension_indicator = torch.arange(self.embedding_size).unsqueeze(0).repeat(x.shape[1],1).to(x.device)
+        target_dimension_indicator = torch.arange(self.embedding_size).unsqueeze(0).repeat(x.shape[0],1).to(x.device)
         index_embeddings = self.embed(target_dimension_indicator)
         repeated_index_embeddings = (
             index_embeddings.unsqueeze(1)
-            .expand(-1, x.shape[0]-1, -1, -1)
-            .reshape((-1, x.shape[0]-1, self.embedding_size * self.embed_dim))
+            .expand(-1, x.shape[1]-1, -1, -1)
+            .reshape((-1, x.shape[1]-1, self.embedding_size * self.embed_dim))
         )
         # repeated_index_embeddings = (batch_size, sentence_length-1, embedding_size*embed_dim)
 
@@ -541,7 +538,7 @@ class TransformerTempFlowModel(nn.Module):
             self.encoder_input(enc_inputs).permute(1, 0, 2)
         )
 
-        tgt_mask = self.transformer.generate_square_subsequent_mask(x.shape[0]-1).to(x.device)
+        tgt_mask = self.transformer.generate_square_subsequent_mask(x.shape[1]-1).to(x.device)
         dec_output = self.transformer.decoder(
             self.decoder_input(dec_inputs).permute(1, 0, 2),
             enc_out,
@@ -553,8 +550,7 @@ class TransformerTempFlowModel(nn.Module):
         # outputs : [batch_size, sentence_length-1, cond_size]
 
         # dequantize
-        inputs += torch.rand_like(inputs).to(x.device)
-        inputs = inputs.permute(1, 0, 2)
+        inputs += torch.rand_like(inputs).to(x.device) 
 
         likelihoods = self.flows.log_probs(inputs[:, 1:, :], outputs)
         # likelihoods : [batch_size, sentence_length-1, 1]

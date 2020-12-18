@@ -3,6 +3,7 @@ from torchnlp.datasets.dataset import Dataset
 from torchnlp.utils import datasets_iterator
 from torchnlp.encoders.text import SpacyEncoder
 from torchnlp.encoders.text.default_reserved_tokens import DEFAULT_SOS_TOKEN
+from torchnlp.encoders.text.text_encoder import pad_tensor
 
 import torch
 from torch.utils.data import Subset
@@ -15,7 +16,31 @@ from . import util
 
 class IMDB_DATA:
 
-    def __init__(self, tokenize='spacy', normal_class=0, append_sos=True, append_eos=True, use_tfidf_weights=False):
+    class Data:
+        def __init__(self, data, fixed_len):
+            
+            texts, labels, weights, pos = [], [], [], []
+            for row in datasets_iterator(data):
+                texts.append(pad_tensor(row['text'], fixed_len))
+                labels.append(row['label'])
+                weights.append(row['weight'])
+                length = row['text'].shape[0]
+                pos_tensor = torch.arange(1,length+1) 
+                pos.append(pad_tensor(pos_tensor, fixed_len))
+            # check if weights are empty
+            if weights[0].nelement() == 0:
+                self.weights = torch.stack(weights).float()
+            else:
+                self.weights = []
+                for w in weights:
+                    self.weights.append(pad_tensor(w, fixed_len))
+                    self.weights = torch.stack(self.weights).contiguous()
+            
+            self.texts = torch.stack(texts).contiguous()
+            self.labels = torch.stack(labels).float()
+            self.pos = torch.stack(pos).contiguous()
+
+    def __init__(self, tokenize='spacy', normal_class=0, fixed_len=0, append_sos=True, append_eos=True, use_tfidf_weights=False):
         self.n_classes = 2 
         classes = ['pos', 'neg']
         self.normal_classes = [classes[normal_class]]
@@ -83,11 +108,15 @@ class IMDB_DATA:
 
         # Encode
         for row in datasets_iterator(self.train_set, self.valid_set, self.test_set, self.train_set_oe, self.valid_set_oe):
+            if fixed_len:
+                text = self.encoder.encode(row['text'][:fixed_len])
+            else:
+                text = self.encoder.encode(row['text'])
             if append_sos:
                 sos_id = self.encoder.stoi[DEFAULT_SOS_TOKEN]
-                row['text'] = torch.cat((torch.tensor(sos_id).unsqueeze(0), self.encoder.encode(row['text'])))
+                row['text'] = torch.cat((torch.tensor(sos_id).unsqueeze(0), text))
             else:
-                row['text'] = self.encoder.encode(row['text'])
+                row['text'] = text
 
         # Compute tf-idf weights
         if use_tfidf_weights:
@@ -95,6 +124,13 @@ class IMDB_DATA:
         else:
             for row in datasets_iterator(self.train_set, self.valid_set, self.test_set, self.train_set_oe, self.valid_set_oe):
                 row['weight'] = torch.empty(0)
+
+        if fixed_len:
+            self.train_set = self.Data(self.train_set, fixed_len=fixed_len)
+            self.valid_set = self.Data(self.valid_set, fixed_len=fixed_len)
+            self.test_set = self.Data(self.test_set, fixed_len=fixed_len)
+            self.train_set_oe = self.Data(self.train_set_oe, fixed_len=fixed_len)
+            self.valid_set_oe = self.Data(self.valid_set_oe, fixed_len=fixed_len)
 
         
 

@@ -46,10 +46,10 @@ parser.add_argument(
     default=0,
     help='specify the normal class of the dataset (all other classes are considered anomalous)')
 parser.add_argument(
-    '--use-oe',
-    action='store_true',
-    default=False,
-    help='use outlier exposure for training and validating')
+    '--fixed_len', 
+    type=int, 
+    default=0,
+    help='specify the length of text (if 0, then not fixed)')
 parser.add_argument(
     '--tokenize',
     default='spacy',
@@ -121,64 +121,74 @@ else:
 
 ## 数据下载
 if args.dataset == 'MIXED_DATA':
-    dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal=args.normal_dataset, outlier=args.outlier_dataset)
+    dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal=args.normal_dataset, outlier=args.outlier_dataset, fixed_len=args.fixed_len)
 else:
-    dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal_class=args.normal_class, use_tfidf_weights=args.use_tfidf_weights)
+    dataset = getattr(datasets, args.dataset)(tokenize=args.tokenize, normal_class=args.normal_class, fixed_len=args.fixed_len, use_tfidf_weights=args.use_tfidf_weights)
 
-def collate_fn(batch):
-    """ list of tensors to a batch tensors """
-    # PyTorch RNN requires batches to be transposed for speed and integration with CUDA
-    transpose = (lambda b: b.t().contiguous())
+if args.fixed_len:
+    train_dataset = torch.utils.data.TensorDataset(dataset.train_set.texts, dataset.train_set.labels, dataset.train_set.weights, dataset.train_set.pos)
 
-    text_batch, length_batch = stack_and_pad_tensors([row['text'] for row in batch])
-    pos_batch, _ = stack_and_pad_tensors([torch.arange(1,l+1) for l in length_batch])
-    label_batch = torch.stack([row['label'] for row in batch])
-    weights = [row['weight'] for row in batch]
-    # check if weights are empty
-    if weights[0].nelement() == 0:
-        weight_batch = torch.empty(0)
-    else:
-        weight_batch, _ = stack_and_pad_tensors([row['weight'] for row in batch])
-        weight_batch = transpose(weight_batch)
+    valid_dataset = torch.utils.data.TensorDataset(dataset.valid_set.texts, dataset.valid_set.labels, dataset.valid_set.weights, dataset.valid_set.pos)
 
-    return transpose(text_batch), label_batch.float(), weight_batch, pos_batch
+    test_dataset = torch.utils.data.TensorDataset(dataset.test_set.texts, dataset.test_set.labels, dataset.test_set.weights, dataset.test_set.pos)
 
-train_sampler = BucketBatchSampler(dataset.train_set, batch_size=args.batch_size, drop_last=True,
-                                        sort_key=lambda r: len(r['text']))
-valid_sampler = BucketBatchSampler(dataset.valid_set, batch_size=args.batch_size, drop_last=False,
-                                        sort_key=lambda r: len(r['text']))
-test_sampler = BucketBatchSampler(dataset.test_set, batch_size=args.batch_size, drop_last=True,
-                                        sort_key=lambda r: len(r['text']))
-if args.use_oe:
-    train_sampler_oe = BucketBatchSampler(dataset.train_set_oe, batch_size=args.batch_size, drop_last=True,
-                                        sort_key=lambda r: len(r['text']))
-    valid_sampler_oe = BucketBatchSampler(dataset.valid_set_oe, batch_size=args.batch_size, drop_last=False,
-                                        sort_key=lambda r: len(r['text']))
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, **kwargs)
+
+    valid_loader = torch.utils.data.DataLoader(
+        valid_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        drop_last=False,
+        **kwargs)
+
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        drop_last=True,
+        **kwargs)
+else:
+    def collate_fn(batch):
+        """ list of tensors to a batch tensors """
+        # PyTorch RNN requires batches to be transposed for speed and integration with CUDA
+        # transpose = (lambda b: b.t().contiguous())
+
+        text_batch, length_batch = stack_and_pad_tensors([row['text'] for row in batch])
+        pos_batch, _ = stack_and_pad_tensors([torch.arange(1,l+1) for l in length_batch])
+        label_batch = torch.stack([row['label'] for row in batch])
+        weights = [row['weight'] for row in batch]
+        # check if weights are empty
+        if weights[0].nelement() == 0:
+            weight_batch = torch.empty(0)
+        else:
+            weight_batch, _ = stack_and_pad_tensors([row['weight'] for row in batch])
+            # weight_batch = transpose(weight_batch)
+
+        return text_batch, label_batch.float(), weight_batch, pos_batch
+
+    train_sampler = BucketBatchSampler(dataset.train_set, batch_size=args.batch_size, drop_last=True,
+                                            sort_key=lambda r: len(r['text']))
+    valid_sampler = BucketBatchSampler(dataset.valid_set, batch_size=args.batch_size, drop_last=False,
+                                            sort_key=lambda r: len(r['text']))
+    test_sampler = BucketBatchSampler(dataset.test_set, batch_size=args.batch_size, drop_last=True,
+                                            sort_key=lambda r: len(r['text']))
 
 
-train_loader = torch.utils.data.DataLoader(
-    dataset=dataset.train_set, batch_sampler=train_sampler, collate_fn=collate_fn, **kwargs)
+    train_loader = torch.utils.data.DataLoader(
+        dataset=dataset.train_set, batch_sampler=train_sampler, collate_fn=collate_fn, **kwargs)
 
-valid_loader = torch.utils.data.DataLoader(
-    dataset=dataset.valid_set,
-    batch_sampler=valid_sampler,
-    collate_fn=collate_fn,
-    **kwargs)
-
-test_loader = torch.utils.data.DataLoader(
-    dataset=dataset.test_set,
-    batch_sampler=test_sampler,
-    collate_fn=collate_fn,
-    **kwargs)
-if args.use_oe:
-    train_loader_oe = torch.utils.data.DataLoader(
-    dataset=dataset.train_set_oe, batch_sampler=train_sampler_oe, collate_fn=collate_fn, **kwargs)
-
-    valid_loader_oe = torch.utils.data.DataLoader(
-        dataset=dataset.valid_set_oe,
-        batch_sampler=valid_sampler_oe,
+    valid_loader = torch.utils.data.DataLoader(
+        dataset=dataset.valid_set,
+        batch_sampler=valid_sampler,
         collate_fn=collate_fn,
         **kwargs)
+
+    test_loader = torch.utils.data.DataLoader(
+        dataset=dataset.test_set,
+        batch_sampler=test_sampler,
+        collate_fn=collate_fn,
+        **kwargs)
+
 
 ## 模型及优化器
 if args.pretrain_model in ['GloVe_6B', 'FastText_en']:
@@ -243,42 +253,20 @@ def train():
     train_loss = 0
 
     pbar = tqdm(total=len(train_loader.dataset))
-    if args.use_oe:
-        for batch_idx, (data, data_oe) in enumerate(zip(iter(train_loader), iter(train_loader_oe))):
-            text_batch, _, weights, pos = data
-            text_batch, weights, pos = text_batch.to(device), weights.to(device), pos.to(device)
+    
+    for batch_idx, data in enumerate(train_loader):
+        text_batch, _, weights, pos = data
+        text_batch, weights, pos = text_batch.to(device), weights.to(device), pos.to(device)
 
-            text_batch_oe, _, weights_oe, pos_oe = data_oe
-            text_batch_oe, weights_oe, pos_oe = text_batch_oe.to(device), weights_oe.to(device), pos_oe.to(device)
+        optimizer.zero_grad()
+        loss = -model(text_batch, pos, weights).mean()
+        train_loss += loss.item()
+        loss.backward()
+        optimizer.step()
 
-            optimizer.zero_grad()
-
-            data_loss_raw = model(text_batch, pos, weights)
-            data_loss = -data_loss_raw.mean()
-            oe_loss_raw = model(text_batch_oe, pos_oe, weights_oe)
-            oe_loss = F.log_softmax(oe_loss_raw - torch.max(oe_loss_raw, dim=-1, keepdim=True)[0], dim=-1).mean()
-            loss = data_loss + 0.5*oe_loss
-            train_loss += loss.item()
-            loss.backward()
-            optimizer.step()
-
-            pbar.update(text_batch.size(1))
-            pbar.set_description('Train, loss: {:.6f}'.format(
-                train_loss / (batch_idx + 1)))
-    else:
-        for batch_idx, data in enumerate(train_loader):
-            text_batch, _, weights, pos = data
-            text_batch, weights, pos = text_batch.to(device), weights.to(device), pos.to(device)
-
-            optimizer.zero_grad()
-            loss = -model(text_batch, pos, weights).mean()
-            train_loss += loss.item()
-            loss.backward()
-            optimizer.step()
-
-            pbar.update(text_batch.size(1))
-            pbar.set_description('Train, Log likelihood in nats: {:.6f}'.format(
-                -train_loss / (batch_idx + 1)))
+        pbar.update(text_batch.size(0))
+        pbar.set_description('Train, Log likelihood in nats: {:.6f}'.format(
+            -train_loss / (batch_idx + 1)))
     pbar.close()
         
     for module in model.modules():
@@ -301,33 +289,15 @@ def validate(model, loader, loader_oe=None):
 
     pbar = tqdm(total=len(loader.dataset))
     pbar.set_description('Eval')
-    if args.use_oe:
-        for batch_idx, (data, data_oe) in enumerate(zip(iter(loader), iter(loader_oe))):
-            text_batch, _, weights, pos = data
-            text_batch, weights, pos = text_batch.to(device), weights.to(device), pos.to(device)
-
-            text_batch_oe, _, weights_oe, pos_oe = data_oe
-            text_batch_oe, weights_oe, pos_oe = text_batch_oe.to(device), weights_oe.to(device), pos_oe.to(device)
-
-            with torch.no_grad():
-                data_loss_raw = model(text_batch, pos, weights)
-                data_loss = -data_loss_raw.sum().item()
-                oe_loss_raw = model(text_batch_oe, pos_oe, weights_oe)
-                oe_loss = F.log_softmax(oe_loss_raw - torch.max(oe_loss_raw, dim=-1, keepdim=True)[0], dim=-1).sum().item()
-                val_loss += (data_loss + 0.5*oe_loss)
-
-            pbar.update(text_batch.size(1))
-            pbar.set_description('Val, loss: {:.6f}'.format(
-                val_loss / pbar.n))
-    else:
-        for batch_idx, data in enumerate(loader):
-            text_batch, _, weights, pos = data
-            text_batch, weights, pos = text_batch.to(device), weights.to(device), pos.to(device)
-            with torch.no_grad():
-                val_loss += -model(text_batch, pos, weights).sum().item() 
-            pbar.update(text_batch.size(1))
-            pbar.set_description('Val, Log likelihood in nats: {:.6f}'.format(
-                -val_loss / pbar.n))
+    
+    for batch_idx, data in enumerate(loader):
+        text_batch, _, weights, pos = data
+        text_batch, weights, pos = text_batch.to(device), weights.to(device), pos.to(device)
+        with torch.no_grad():
+            val_loss += -model(text_batch, pos, weights).sum().item() 
+        pbar.update(text_batch.size(0))
+        pbar.set_description('Val, Log likelihood in nats: {:.6f}'.format(
+            -val_loss / pbar.n))
 
     pbar.close()
     return val_loss / len(loader.dataset)
@@ -362,10 +332,7 @@ for epoch in range(args.epochs):
     print('\nEpoch: {}'.format(epoch))
 
     train()
-    if args.use_oe:
-        validation_loss = validate(model, valid_loader, valid_loader_oe)
-    else:
-        validation_loss = validate(model, valid_loader)
+    validation_loss = validate(model, valid_loader)
 
     if epoch - best_validation_epoch >= 30:
         break
