@@ -32,8 +32,8 @@ parser.add_argument(
 parser.add_argument(
     '--dataset',
     type=str, 
-    default='PTB_DATA',
-    help='PTB_DATA')
+    default='penn',
+    help='penn | pennchar')
 parser.add_argument(
     '--model', 
     type=str, 
@@ -101,7 +101,7 @@ if os.path.exists(fn):
     dataset = torch.load(fn)
 else:
     print('Producing dataset...')
-    dataset = getattr(datasets, args.dataset)()
+    dataset = getattr(datasets, "LM_DATA")(args.dataset)
     torch.save(dataset, fn)
 
 print(dataset.vocab_size, dataset.trn.x.shape, dataset.val.x.shape, dataset.tst.x.shape)

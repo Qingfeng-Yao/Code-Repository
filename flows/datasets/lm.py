@@ -5,7 +5,7 @@ import torch
 
 import datasets
 
-class PTB_DATA:
+class LM_DATA:
     class Data:
         def __init__(self, data):
 
@@ -13,9 +13,9 @@ class PTB_DATA:
             self.N = self.x.shape[0]
 
 
-    def __init__(self):
+    def __init__(self, dataset):
         self.dictionary = Dictionary()
-        trn, val, tst  = self.load_data()
+        trn, val, tst  = self.load_data(dataset)
 
         self.trn = self.Data(trn)
         self.val = self.Data(val)
@@ -23,8 +23,8 @@ class PTB_DATA:
         self.vocab_size = len(self.dictionary)
 
 
-    def load_data(self):
-        directory = datasets.root + 'penn/'
+    def load_data(self, dataset):
+        directory = datasets.root + dataset + '/'
 
         for split_set in ['train', 'valid', 'test']:
             with open(directory+split_set+'.txt', encoding='utf-8') as f:
