@@ -45,3 +45,28 @@ def one_hot_add(inputs, shift):
     result_fft_imag = inputs_fft[...,0]*shift_fft[...,1] + inputs_fft[...,1]*shift_fft[...,0]
     result_fft = torch.stack((result_fft_real,result_fft_imag), dim = -1)
     return torch.ifft(result_fft, 1)[...,0]
+
+## 语言建模
+def batchify(data, bsz, device):
+    # Work out how cleanly we can divide the dataset into bsz parts.
+    nbatch = data.size(0) // bsz
+    # Trim off any extra elements that wouldn't cleanly fit (remainders).
+    data = data.narrow(0, 0, nbatch * bsz)
+    # Evenly divide the data across the bsz batches.
+    data = data.view(bsz, -1).t().contiguous()
+    data = data.to(device)
+    return data
+
+def get_batch(source, i, args, seq_len=None, evaluation=False):
+    seq_len = min(seq_len if seq_len else args.bptt, len(source) - 1 - i)
+    data = source[i:i+seq_len]
+    target = source[i+1:i+1+seq_len].view(-1)
+    return data, target
+
+def repackage_hidden(h):
+    """Wraps hidden states in new Tensors,
+    to detach them from their history."""
+    if isinstance(h, torch.Tensor):
+        return h.detach()
+    else:
+        return tuple(repackage_hidden(v) for v in h)

@@ -1,6 +1,7 @@
 import numpy as np
-from torchnlp.encoders.text import SpacyEncoder
-from torchnlp.encoders.text.text_encoder import pad_tensor
+from collections import Counter
+
+import torch
 
 import datasets
 
@@ -13,66 +14,60 @@ class PTB_DATA:
 
 
     def __init__(self):
-        trn, val, tst, vocab_size = load_data()
+        self.dictionary = Dictionary()
+        trn, val, tst  = self.load_data()
 
         self.trn = self.Data(trn)
         self.val = self.Data(val)
         self.tst = self.Data(tst)
-        self.vocab_size = vocab_size
-
-        self.n_dims = self.trn.x.shape[1]
+        self.vocab_size = len(self.dictionary)
 
 
-def load_data():
-    directory = datasets.root + 'ptb/'
+    def load_data(self):
+        directory = datasets.root + 'penn/'
 
-    MAX_LEN = 288
-    MIN_LEN = 1
+        for split_set in ['train', 'valid', 'test']:
+            with open(directory+split_set+'.txt', encoding='utf-8') as f:
+                tokens = 0
+                for line in f:
+                    words = line.split() + ['<eos>']
+                    tokens += len(words)
+                    for word in words:
+                        self.dictionary.add_word(word)
 
-    train_data = []
-    valid_data = []
-    test_data = []
-    for split_set in ['train', 'valid', 'test']:
-        with open(directory+split_set+'.txt', encoding='utf-8') as f:
-            for line in f:
-                text = ' '.join(list(line.strip()))
+            with open(directory+split_set+'.txt', encoding='utf-8') as f:
+                ids = torch.LongTensor(tokens)
+                token = 0
+                for line in f:
+                    words = line.split() + ['<eos>']
+                    for word in words:
+                        ids[token] = self.dictionary.word2idx[word]
+                        token += 1
 
-                if split_set == 'train':
-                    train_data.append(text)
-                elif split_set == 'valid':
-                    valid_data.append(text)
-                elif split_set == 'test':
-                    test_data.append(text)
+            if split_set == 'train':
+                train_data = ids
+            elif split_set == 'valid':
+                valid_data = ids
+            elif split_set == 'test':
+                test_data = ids
 
-    text_corpus = (train_data)
-    encoder = SpacyEncoder(text_corpus)
-    # print(encoder.vocab)
-    # print(len(encoder.vocab))
+        return train_data, valid_data, test_data
 
-    data_train, data_validate, data_test = [], [], []
-    for i, row in enumerate(train_data):
-        tokens = encoder.encode(row)
-        if len(tokens) > MAX_LEN or len(tokens) < MIN_LEN:
-            continue
-        padded = pad_tensor(tokens, MAX_LEN)
-        data_train.append(padded.cpu().data.numpy())
+class Dictionary(object):
+    def __init__(self):
+        self.word2idx = {}
+        self.idx2word = []
+        self.counter = Counter()
+        self.total = 0
 
-    for i, row in enumerate(valid_data):
-        tokens = encoder.encode(row)
-        if len(tokens) > MAX_LEN or len(tokens) < MIN_LEN:
-            continue
-        padded = pad_tensor(tokens, MAX_LEN)
-        data_validate.append(padded.cpu().data.numpy())
+    def add_word(self, word):
+        if word not in self.word2idx:
+            self.idx2word.append(word)
+            self.word2idx[word] = len(self.idx2word) - 1
+        token_id = self.word2idx[word]
+        self.counter[token_id] += 1
+        self.total += 1
+        return self.word2idx[word]
 
-    for i, row in enumerate(test_data):
-        tokens = encoder.encode(row)
-        if len(tokens) > MAX_LEN or len(tokens) < MIN_LEN:
-            continue
-        padded = pad_tensor(tokens, MAX_LEN)
-        data_test.append(padded.cpu().data.numpy())
-
-    data_train = np.vstack(data_train)
-    data_validate = np.vstack(data_validate)
-    data_test = np.vstack(data_test)
-
-    return data_train, data_validate, data_test, len(encoder.vocab)
+    def __len__(self):
+        return len(self.idx2word)
