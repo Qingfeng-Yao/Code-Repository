@@ -51,7 +51,7 @@ parser.add_argument(
 parser.add_argument(
     '--bptt', type=int, default=70, help='sequence length')
 parser.add_argument(
-    '--batch-size',
+    '--batch_size',
     type=int,
     default=80,
     help='input batch size for training')
@@ -131,7 +131,7 @@ print('Using', splits)
 criterion = SplitCrossEntropyLoss(args.emsize, splits=splits, verbose=False)
 
 model = model.to(device)
-criterion = criterion.(device)
+criterion = criterion.to(device)
 
 params = list(model.parameters()) + list(criterion.parameters())
 total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in params if x.size())
@@ -235,8 +235,11 @@ for epoch in range(1, args.epochs+1):
     if 't0' in optimizer.param_groups[0]:
         tmp = {}
         for prm in model.parameters():
-            tmp[prm] = prm.data.clone()
-            prm.data = optimizer.state[prm]['ax'].clone()
+            if prm in optimizer.state.keys():
+                # tmp[prm] = prm.data.clone()
+                tmp[prm] = prm.data.detach()
+                # prm.data = optimizer.state[prm]['ax'].clone()
+                prm.data = optimizer.state[prm]['ax'].detach()
 
         val_loss2 = evaluate(val_data)
         print('-' * 89)
@@ -251,7 +254,12 @@ for epoch in range(1, args.epochs+1):
             stored_loss = val_loss2
 
         for prm in model.parameters():
-            prm.data = tmp[prm].clone()
+            if prm in tmp.keys():
+                # prm.data = tmp[prm].clone()
+                prm.data = tmp[prm].detach()
+                prm.requires_grad = True
+
+        del tmp
 
     else:
         val_loss = evaluate(val_data, eval_batch_size)
