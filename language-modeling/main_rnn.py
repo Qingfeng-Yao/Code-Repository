@@ -8,7 +8,7 @@ import hashlib
 import torch
 
 import datasets
-from models import *
+from temp_models import *
 import util
 
 ## 参数设置

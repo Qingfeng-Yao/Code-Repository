@@ -67,7 +67,7 @@ parser.add_argument(
     '--cond',
     action='store_true',
     default=False,
-    help='train class conditional flow (only for MNIST)')
+    help='train class conditional flow')
 
 parser.add_argument(
     '--lr', type=float, default=1e-4, help='learning rate')
