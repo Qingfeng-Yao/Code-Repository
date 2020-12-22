@@ -106,7 +106,7 @@ args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 device = torch.device(args.cuda_device if args.cuda else "cpu")
 
-setattr(args, 'save', 'output/'+args.model+'-'+args.dataset+'/saves/')
+setattr(args, 'save', 'output/'+args.model+'-'+args.dataset)
 
 os.makedirs(args.save, exist_ok=True)
 
@@ -268,7 +268,7 @@ for epoch in range(1, args.epochs+1):
         print('-' * 89)
 
         if val_loss2 < stored_loss:
-            model_save(args.save)
+            model_save(args.save+'/model.pt')
             print('Saving Averaged!')
             stored_loss = val_loss2
 
@@ -289,7 +289,7 @@ for epoch in range(1, args.epochs+1):
         print('-' * 89)
 
         if val_loss < stored_loss:
-            model_save(args.save)
+            model_save(args.save+'/model.pt')
             print('Saving model (new best validation)')
             stored_loss = val_loss
 
@@ -299,14 +299,14 @@ for epoch in range(1, args.epochs+1):
 
         if epoch in args.when:
             print('Saving model before learning rate decreased')
-            model_save('{}.e{}'.format(args.save, epoch))
+            model_save('{}/model.e{}'.format(args.save, epoch))
             print('Dividing learning rate by 10')
             optimizer.param_groups[0]['lr'] /= 10.
 
         best_val_loss.append(val_loss)
 
 # Load the best saved model.
-model_load(args.save)
+model_load(args.save+'/model.pt')
 
 # Run on test data.
 test_loss = evaluate(test_data, args.test_batch_size)
