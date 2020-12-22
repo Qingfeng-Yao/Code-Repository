@@ -12,7 +12,7 @@ from temp_models import *
 import util
 
 ## 参数设置
-parser = argparse.ArgumentParser(description='pytorch language model')
+parser = argparse.ArgumentParser(description='pytorch language modeling using rnn')
 parser.add_argument(
     '--dataset',
     type=str, 
@@ -28,8 +28,6 @@ parser.add_argument(
     type=str, 
     default='cuda:0',
     help='cuda:0 | ...')
-parser.add_argument(
-    '--save', type=str,  default='output/penn-lstm.pt', help='path to save the final model: penn-lstm.pt | pennchar-lstm.pt')
 parser.add_argument(
     '--when', nargs="+", type=int, default=[-1], help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
 
@@ -107,6 +105,10 @@ parser.add_argument(
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 device = torch.device(args.cuda_device if args.cuda else "cpu")
+
+setattr(args, 'save', 'output/'+args.model+'-'+args.dataset+'/saves/')
+
+os.makedirs(args.save, exist_ok=True)
 
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
