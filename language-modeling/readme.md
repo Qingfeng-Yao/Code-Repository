@@ -9,20 +9,12 @@
 
 ## 模型
 - RNN：LSTM、GRU、QRNN
-- Transformer
-- 流模型
 
 ## 指标
 - NLL(负对数似然)，单位bpc/bpw，即bits per character/bits per word
 
-
 ## 特点
 - 提升GPU利用率
 
-
-
 ## 参考资料
 - [salesforce/awd-lstm-lm](https://github.com/salesforce/awd-lstm-lm)
-- [harvardnlp/TextFlow](https://github.com/harvardnlp/TextFlow)
-- [TrentBrick/PyTorchDiscreteFlows](https://github.com/TrentBrick/PyTorchDiscreteFlows)
-- [nadavbh12/Character-Level-Language-Modeling-with-Deeper-Self-Attention-pytorch](https://github.com/nadavbh12/Character-Level-Language-Modeling-with-Deeper-Self-Attention-pytorch)
