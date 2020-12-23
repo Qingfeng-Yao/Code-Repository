@@ -22,7 +22,7 @@ parser.add_argument(
     '--model', 
     type=str, 
     default='LSTM', 
-    help='LSTM | QRNN | GRU | Transformer | Flow')
+    help='LSTM | QRNN | GRU')
 parser.add_argument(
     '--cuda-device',
     type=str, 
