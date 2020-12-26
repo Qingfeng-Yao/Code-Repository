@@ -36,6 +36,10 @@ class LM_DATA:
                         for word in words:
                             self.dictionary.add_word(word)
 
+            if '<unk>' not in self.dictionary.word2idx:
+                i = len(self.dictionary.word2idx)
+                self.dictionary.word2idx['<unk>'] = i
+
             with open(directory+split_set+'.txt', encoding='utf-8') as f:
                 ids = torch.LongTensor(tokens)
                 token = 0
