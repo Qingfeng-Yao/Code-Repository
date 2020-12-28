@@ -30,7 +30,7 @@ class RNNModel(nn.Module):
             self.rnns = [QRNNLayer(input_size=ninp if l == 0 else nhid, hidden_size=nhid if l != nlayers - 1 else (ninp if tie_weights else nhid), save_prev_x=True, zoneout=0, window=2 if l == 0 else 1, output_gate=True) for l in range(nlayers)]
             for rnn in self.rnns:
                 rnn.linear = WeightDrop(rnn.linear, ['weight'], dropout=wdrop)
-        print(self.rnns)
+        # print(self.rnns)
         self.rnns = torch.nn.ModuleList(self.rnns)
         self.decoder = nn.Linear(nhid, ntoken)
 
@@ -136,11 +136,11 @@ class WeightDrop(nn.Module):
 
     def _setup(self):
         # Terrible temporary solution to an issue regarding compacting weights re: CUDNN RNN
-        if issubclass(type(self.module), torch.nn.RNNBase):
-            self.module.flatten_parameters = self.widget_demagnetizer_y2k_edition
+        # if issubclass(type(self.module), torch.nn.RNNBase):
+        #     self.module.flatten_parameters = self.widget_demagnetizer_y2k_edition
 
         for name_w in self.weights:
-            print('Applying weight drop of {} to {}'.format(self.dropout, name_w))
+            # print('Applying weight drop of {} to {}'.format(self.dropout, name_w))
             w = getattr(self.module, name_w)
             del self.module._parameters[name_w]
             self.module.register_parameter(name_w + '_raw', Parameter(w.data))
@@ -160,6 +160,7 @@ class WeightDrop(nn.Module):
 
     def forward(self, *args):
         self._setweights()
+        self.module.flatten_parameters()
         return self.module.forward(*args)
 
 def embedded_dropout(embed, words, dropout=0.1, scale=None):
