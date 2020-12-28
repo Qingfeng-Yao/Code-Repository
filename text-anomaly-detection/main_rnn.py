@@ -14,22 +14,21 @@ from temp_models import *
 import util
 
 ## 参数设置
-parser = argparse.ArgumentParser(description='pytorch language modeling with outlier exposure')
+parser = argparse.ArgumentParser(description='pytorch text anomaly detection using rnn language model')
 parser.add_argument(
     '--dataset',
     type=str, 
     default='penn',
     help='penn | pennchar')
 parser.add_argument(
-    '--character_level', 
-    action='store_true', 
-    default=False,
-    help="Use this flag to evaluate character-level models.")
+    '--wikitext_char', action='store_true', default=False, help='Load character-level WikiText. Use when in-dist is character-level. Dictionary also uses in-dist')
 parser.add_argument(
     '--model', 
     type=str, 
     default='LSTM', 
     help='LSTM | QRNN | GRU')
+parser.add_argument(
+    '--use_OE', action='store_true', default=False, help='outlier exposure')
 parser.add_argument(
     '--cuda-device',
     type=str, 
@@ -38,20 +37,9 @@ parser.add_argument(
 parser.add_argument(
     '--when', nargs="+", type=int, default=[-1], help='When (which epochs) to divide the learning rate by 10 - accepts multiple')
 parser.add_argument(
-    '--use_OE', 
-    action='store_false',
-    default=True,
-    help='training with OE')
+    '--resume_oe', type=str,  default='', help='path of model to resume for OE: output/.../model.pt')
 parser.add_argument(
-    '--resume', 
-    type=str,  
-    default='',
-    help='path of model to resume')
-parser.add_argument(
-    '--resume_test', 
-    type=str,  
-    default='',
-    help='path of model to resume for testing')
+    '--resume_ood', type=str,  default='', help='path of model to resume for OOD: output/.../model.pt')
 
 parser.add_argument(
     '--no-cuda',
@@ -128,7 +116,7 @@ args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 device = torch.device(args.cuda_device if args.cuda else "cpu")
 
-setattr(args, 'save', 'output/'+args.model+'-'+args.dataset)
+setattr(args, 'save', 'output/'+args.model+'-'+args.dataset+'-'+str(args.use_OE)+'OE')
 
 os.makedirs(args.save, exist_ok=True)
 
@@ -138,31 +126,6 @@ if args.cuda:
     torch.cuda.manual_seed(args.seed)
 
 ## 数据下载
-fn = 'datacache/corpus.{}.data'.format(hashlib.md5(args.dataset.encode()).hexdigest())
-if os.path.exists(fn):
-    print('Loading cached in dataset...')
-    dataset = torch.load(fn)
-else:
-    print('Producing in dataset...')
-    dataset = getattr(datasets, "LM_DATA")(args.dataset)
-    torch.save(dataset, fn)
-
-print(dataset.vocab_size, dataset.trn.x.shape, dataset.val.x.shape, dataset.tst.x.shape)
-
-train_data = util.batchify(dataset.trn.x, args.batch_size, device)
-val_data = util.batchify(dataset.val.x, args.eval_batch_size, device)
-test_data = util.batchify(dataset.tst.x, args.test_batch_size, device)
-
-print(train_data.shape, val_data.shape, test_data.shape)
-
-# 下载OE数据
-print('Producing out dataset...')
-oe_corpus = getattr(datasets, "LM_DATA")('wikitext-2', dataset.dictionary)  
-oe_dataset = util.batchify(oe_corpus.trn.x, args.batch_size, device)
-oe_val_dataset = util.batchify(oe_corpus.val.x, args.eval_batch_size, device)
-
-
-## 模型及优化器
 def model_save(fn):
     with open(fn, 'wb') as f:
         torch.save([model, criterion, optimizer], f)
@@ -172,12 +135,47 @@ def model_load(fn):
     with open(fn, 'rb') as f:
         model, criterion, optimizer = torch.load(f)
 
+
+fn = 'datacache/corpus.{}.data'.format(hashlib.md5(args.dataset.encode()).hexdigest())
+# if os.path.exists(fn):
+#     print('Loading cached in-dist dataset...')
+#     dataset = torch.load(fn)
+# else:
+#     print('Producing in-dist dataset...')
+#     dataset = getattr(datasets, "LM_DATA")(args.dataset)
+#     torch.save(dataset, fn)
+print('Producing in-dist dataset...')
+dataset = getattr(datasets, "LM_DATA")(args.dataset)
+torch.save(dataset, fn)
+
+print(dataset.vocab_size, dataset.trn.x.shape, dataset.val.x.shape, dataset.tst.x.shape)
+
+train_data = util.batchify(dataset.trn.x, args.batch_size, device)
+val_data = util.batchify(dataset.val.x, args.eval_batch_size, device)
+test_data = util.batchify(dataset.tst.x, args.test_batch_size, device)
+
+print(train_data.shape, val_data.shape, test_data.shape)
+
+# Load OE data
+print('Producing OE dataset...')
+if args.wikitext_char:
+    oe_dataset = util.CorpusWikiTextChar('data/wikitext-2', dataset.dictionary)
+
+    oe_train_dataset = util.batchify(oe_dataset.train, args.batch_size, device)
+    oe_val_dataset = util.batchify(oe_dataset.valid, args.eval_batch_size, device)
+else:
+    oe_dataset = getattr(datasets, "LM_DATA")('wikitext-2', dataset.dictionary)
+
+    oe_train_dataset = util.batchify(oe_dataset.trn.x, args.batch_size, device)
+    oe_val_dataset = util.batchify(oe_dataset.val.x, args.eval_batch_size, device)
+
+## 模型及优化器
 ntokens = len(dataset.dictionary)
 model = RNNModel(args.model, ntokens, args.emsize, args.nhid, args.nlayers, args.dropout, args.dropouth, args.dropouti, args.dropoute, args.wdrop, args.tied)
 
-if args.resume:
-    print('Resuming model ...')
-    model_load(args.resume)
+if args.resume_oe:
+    print('Resuming model for OE...')
+    model_load(args.resume_oe)
     optimizer.param_groups[0]['lr'] = args.lr
     model.dropouti, model.dropouth, model.dropout, args.dropoute = args.dropouti, args.dropouth, args.dropout, args.dropoute
     if args.wdrop:
@@ -194,7 +192,7 @@ if ntokens > 500000:
 elif ntokens > 75000:
     # WikiText-103
     splits = [2800, 20000, 76000]
-print('Using', splits)
+print('Using splits', splits)
 criterion = SplitCrossEntropyLoss(args.emsize, splits=splits, verbose=False)
 
 model = model.to(device)
@@ -219,22 +217,16 @@ def evaluate(data_source, batch_size=10):
     if args.model == 'QRNN': model.reset()
     total_loss = 0
     total_oe_loss = 0
-    num_batches = 0
-    ntokens = len(dataset.dictionary)
+    hidden = model.init_hidden(2*batch_size)
     for i in range(0, data_source.size(0) - 1, args.bptt):
-        
         data, targets = util.get_batch(data_source, i, args, evaluation=True)
         data_oe, _ = util.get_batch(oe_val_dataset, i, args, evaluation=True)
 
-        if len(data.size()) == 1:  # happens for test set?
-            data.unsqueeze(-1)
-            data_oe.unsqueeze(-1)
+        assert len(data.size()) != 1
+        assert len(data_oe.size()) != 1
 
         if data.size(0) != data_oe.size(0):
             continue
-
-        hidden = model.init_hidden(2*batch_size)
-        hidden = util.repackage_hidden(hidden)
 
         output, hidden, rnn_hs, dropped_rnn_hs = model(torch.cat([data, data_oe], dim=1), hidden, return_h=True)
         output, output_oe = torch.chunk(dropped_rnn_hs[-1], dim=1, chunks=2)
@@ -242,16 +234,18 @@ def evaluate(data_source, batch_size=10):
         output = output.view(output.size(0)*output.size(1), output.size(2))
 
         loss = criterion(model.decoder.weight, model.decoder.bias, output, targets).data
+
         # OE loss
         logits_oe = model.decoder(output_oe)
         smaxes_oe = F.softmax(logits_oe - torch.max(logits_oe, dim=-1, keepdim=True)[0], dim=-1)
         loss_oe = -smaxes_oe.log().mean(-1)
         loss_oe = loss_oe.mean().data
 
-        total_loss += loss
-        total_oe_loss += loss_oe
-        num_batches += 1
-    return total_loss.item() / num_batches, total_oe_loss.item() / num_batches
+        total_loss += len(data) * loss
+        total_oe_loss += len(data) * loss_oe
+
+        hidden = util.repackage_hidden(hidden)
+    return total_loss.item() / len(data_source), total_oe_loss.item() / len(data_source)
 
 
 def train():
@@ -260,29 +254,25 @@ def train():
     total_loss = 0
     total_oe_loss = 0
     start_time = time.time()
-    ntokens = len(dataset.dictionary)
-    batch, i = 0, 0
-
-    train_indices = np.arange(train_data.size(0) // args.bptt)
-    np.random.shuffle(train_indices)
-
-    oe_indices = np.arange(oe_dataset.size(0) // args.bptt)
-    np.random.shuffle(oe_indices)
-
+    hidden = model.init_hidden(2*args.batch_size)
+    batch = 0 
     seq_len = args.bptt
 
-    for i in range(0, train_data.size(0), args.bptt):
+    for i in range(0, train_data.size(0), args.bptt): 
+
         lr2 = optimizer.param_groups[0]['lr']
         optimizer.param_groups[0]['lr'] = lr2 * seq_len / args.bptt
         model.train()
         data, targets = util.get_batch(train_data, i, args, seq_len=seq_len)
-        data_oe, _ = util.get_batch(oe_dataset, i, args, seq_len=seq_len)
+        data_oe, _ = util.get_batch(oe_train_dataset, i, args, seq_len=seq_len)
 
         if data.size(0) != data_oe.size(0):  # Don't train on this batch if the sequence lengths are different (happens at end of epoch).
             continue
 
-        hidden = model.init_hidden(2*args.batch_size)
+        # Starting each batch, we detach the hidden state from how it was previously produced.
+        # If we didn't, the model would try backpropagating all the way to start of the dataset.
         hidden = util.repackage_hidden(hidden)
+        optimizer.zero_grad()
 
         output, hidden, rnn_hs, dropped_rnn_hs = model(torch.cat([data, data_oe], dim=1), hidden, return_h=True)
         output, output_oe = torch.chunk(dropped_rnn_hs[-1], dim=1, chunks=2)
@@ -300,15 +290,14 @@ def train():
         # OE loss
         logits_oe = model.decoder(output_oe)
         smaxes_oe = F.softmax(logits_oe - torch.max(logits_oe, dim=-1, keepdim=True)[0], dim=-1)
-        loss_oe = -smaxes_oe.log().mean(-1)  # for cross entropy
-        loss_oe = loss_oe.mean()  # for ERM
+        loss_oe = -smaxes_oe.log().mean(-1)  
+        loss_oe = loss_oe.mean() 
 
         if args.use_OE:
             loss_bp = loss + 0.5 * loss_oe
         else:
             loss_bp = loss
 
-        optimizer.zero_grad()
         loss_bp.backward()
 
         # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
@@ -329,7 +318,7 @@ def train():
             total_loss = 0
             total_oe_loss = 0
             start_time = time.time()
-        ###
+        
         batch += 1
 
 # Loop over epochs.
@@ -397,33 +386,27 @@ for epoch in range(1, args.epochs+1):
 # Load the best saved model.
 model_load(args.save+'/model.pt')
 
-# Run on test data.
-test_loss, val_oe_loss = evaluate(test_data, args.test_batch_size)
-print('=' * 89)
-print('| End of training | test loss {:5.2f} | val oe_loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
-    test_loss, val_oe_loss, math.exp(test_loss), test_loss / math.log(2)))
-print('=' * 89)
 
-# 异常测试
-print('Producing test ood datasets...')
+print('Producing ood datasets...')
 
-answers_corpus = util.OODCorpus('data/eng_web_tbk/answers-dev.conllu', dataset.dictionary, char=args.character_level)
+answers_corpus = util.OODCorpus('data/eng_web_tbk/answers-dev.conllu', dataset.dictionary, char_level=args.wikitext_char)
 answers_data = util.batchify(answers_corpus.data, args.test_batch_size, device)
 
-email_corpus = util.OODCorpus('data/eng_web_tbk/email-dev.conllu', dataset.dictionary, char=args.character_level)
+email_corpus = util.OODCorpus('data/eng_web_tbk/email-dev.conllu', dataset.dictionary, char_level=args.wikitext_char)
 email_data = util.batchify(email_corpus.data, args.test_batch_size, device)
 
-newsgroup_corpus = util.OODCorpus('data/eng_web_tbk/newsgroup-dev.conllu', dataset.dictionary, char=args.character_level)
+newsgroup_corpus = util.OODCorpus('data/eng_web_tbk/newsgroup-dev.conllu', dataset.dictionary, char_level=args.wikitext_char)
 newsgroup_data = util.batchify(newsgroup_corpus.data, args.test_batch_size, device)
 
-reviews_corpus = util.OODCorpus('data/eng_web_tbk/reviews-dev.conllu', dataset.dictionary, char=args.character_level)
+reviews_corpus = util.OODCorpus('data/eng_web_tbk/reviews-dev.conllu', dataset.dictionary, char_level=args.wikitext_char)
 reviews_data = util.batchify(reviews_corpus.data, args.test_batch_size, device)
 
-weblog_corpus = util.OODCorpus('data/eng_web_tbk/weblog-dev.conllu', dataset.dictionary, char=args.character_level)
+weblog_corpus = util.OODCorpus('data/eng_web_tbk/weblog-dev.conllu', dataset.dictionary, char_level=args.wikitext_char)
 weblog_data = util.batchify(weblog_corpus.data, args.test_batch_size, device)
 
-print('Resuming model ... for testing')
-model_load(args.resume_test)
+assert args.resume_ood, 'must provide a --resume_ood argument'
+print('Resuming model for OOD ...')
+model_load(args.resume_ood)
 optimizer.param_groups[0]['lr'] = args.lr
 model.dropouti, model.dropouth, model.dropout, args.dropoute = args.dropouti, args.dropouth, args.dropout, args.dropoute
 if args.wdrop:
@@ -434,77 +417,38 @@ if args.wdrop:
 model = model.to(device)
 criterion = criterion.to(device)
 
-params = list(model.parameters()) + list(criterion.parameters())
-total_params = sum(x.size()[0] * x.size()[1] if len(x.size()) > 1 else x.size()[0] for x in params if x.size())
-print('Model total parameters for testing:', total_params)
-
 ood_num_examples = test_data.size(0) // 5
-expected_ap = ood_num_examples / (ood_num_examples + test_data.size(0))
 recall_level = 0.9
 
-def get_base_rates():
-    batch, i = 0, 0
-    seq_len = args.bptt
-    ntokens = len(dataset.dictionary)
-    token_counts = np.zeros(ntokens)
-    total_count = 0
-
-    for i in range(0, train_data.size(0), args.bptt):  # Assume OE dataset is larger. It is, because we're using wikitext-2.
-        data, targets = util.get_batch(train_data, i, args, seq_len=seq_len)
-        for j in range(targets.numel()):
-            token_counts[targets[j].data.cpu().numpy()[0]] += 1
-            total_count += 1
-        batch += 1
-
-    return token_counts / total_count
-
-
-print('Getting base rates...')
-base_rates = get_base_rates()
-np.save('datacache/base_rates.npy', base_rates)
-base_rates = Variable(torch.from_numpy(np.load('datacache/base_rates.npy').astype(np.float32))).cuda().float().squeeze()  # shit happens
-uniform_base_rates = Variable(torch.from_numpy(np.ones(len(dataset.dictionary)).astype(np.float32))).cuda().float().squeeze()
-uniform_base_rates /= uniform_base_rates.numel()
-print('Done.')
-
-
-def evaluate_test(data_source, corpus, batch_size=10, ood=False):
-    # Turn on evaluation mode which disables dropout.
+def evaluate_ood(data_source, dataset, batch_size=10, ood=False):
     model.eval()
     if args.model == 'QRNN': model.reset()
-    loss_accum = 0
+    total_loss = 0
     losses = []
-    ntokens = len(corpus.dictionary)
+    hidden = model.init_hidden(batch_size)
     for i in range(0, data_source.size(0) - 1, args.bptt):
         if (i >= ood_num_examples // args.test_batch_size) and (ood is True):
             break
 
-        hidden = model.init_hidden(batch_size)
-        hidden = util.repackage_hidden(hidden)
-
         data, targets = util.get_batch(data_source, i, args, evaluation=True)
         output, hidden = model(data, hidden)
-        
+
         logits = model.decoder(output)
         smaxes = F.softmax(logits - torch.max(logits, dim=1, keepdim=True)[0], dim=1)
         tmp = smaxes[range(targets.size(0)), targets]
         log_prob = torch.log(tmp).mean(0)  # divided by seq len, so this is the negative nats per char
-        loss = -log_prob.data.cpu().numpy()[0]
+        loss = -log_prob.data.cpu().numpy()
         
-        loss_accum += loss
-        # losses.append(loss)
-        # Experimental!
-        # anomaly_score = -torch.max(smaxes, dim=1)[0].mean()  # negative MSP
-        anomaly_score = ((smaxes).add(1e-18).log() * uniform_base_rates.unsqueeze(0)).sum(1).mean(0)  # negative KL to uniform
-        losses.append(anomaly_score.data.cpu().numpy()[0])
+        total_loss += loss
+        losses.append(loss)
 
-    return loss_accum / (len(data_source) // args.bptt), losses
-
+        hidden = util.repackage_hidden(hidden)
+    return total_loss.item() / (len(data_source) // args.bptt), losses
 
 
 # Run on test data.
 print('\nPTB')
-test_loss, test_losses = evaluate_test(test_data, dataset, args.test_batch_size)
+test_loss, test_losses = evaluate_ood(test_data, dataset, args.test_batch_size)
 print('=' * 89)
 print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
     test_loss, math.exp(test_loss), test_loss / math.log(2)))
@@ -512,7 +456,7 @@ print('=' * 89)
 
 
 print('\nAnswers (OOD)')
-ood_loss, ood_losses = evaluate_test(answers_data, answers_corpus, args.test_batch_size, ood=True)
+ood_loss, ood_losses = evaluate_ood(answers_data, answers_corpus, args.test_batch_size, ood=True)
 print('=' * 89)
 print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
     ood_loss, math.exp(ood_loss), ood_loss / math.log(2)))
@@ -521,7 +465,7 @@ util.show_performance(ood_losses, test_losses, recall_level=recall_level)
 
 
 print('\nEmail (OOD)')
-ood_loss, ood_losses = evaluate_test(email_data, email_corpus, args.test_batch_size, ood=True)
+ood_loss, ood_losses = evaluate_ood(email_data, email_corpus, args.test_batch_size, ood=True)
 print('=' * 89)
 print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
     ood_loss, math.exp(ood_loss), ood_loss / math.log(2)))
@@ -530,7 +474,7 @@ util.show_performance(ood_losses, test_losses, recall_level=recall_level)
 
 
 print('\nNewsgroup (OOD)')
-ood_loss, ood_losses = evaluate_test(newsgroup_data, newsgroup_corpus, args.test_batch_size, ood=True)
+ood_loss, ood_losses = evaluate_ood(newsgroup_data, newsgroup_corpus, args.test_batch_size, ood=True)
 print('=' * 89)
 print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
     ood_loss, math.exp(ood_loss), ood_loss / math.log(2)))
@@ -539,7 +483,7 @@ util.show_performance(ood_losses, test_losses, recall_level=recall_level)
 
 
 print('\nReviews (OOD)')
-ood_loss, ood_losses = evaluate_test(reviews_data, reviews_corpus, args.test_batch_size, ood=True)
+ood_loss, ood_losses = evaluate_ood(reviews_data, reviews_corpus, args.test_batch_size, ood=True)
 print('=' * 89)
 print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
     ood_loss, math.exp(ood_loss), ood_loss / math.log(2)))
@@ -548,9 +492,11 @@ util.show_performance(ood_losses, test_losses, recall_level=recall_level)
 
 
 print('\nWeblog (OOD)')
-ood_loss, ood_losses = evaluate_test(weblog_data, weblog_corpus, args.test_batch_size, ood=True)
+ood_loss, ood_losses = evaluate_ood(weblog_data, weblog_corpus, args.test_batch_size, ood=True)
 print('=' * 89)
 print('| End of training | test loss {:5.2f} | test ppl {:8.2f} | test bpc {:8.3f}'.format(
     ood_loss, math.exp(ood_loss), ood_loss / math.log(2)))
 print('=' * 89)
 util.show_performance(ood_losses, test_losses, recall_level=recall_level)
+
+
