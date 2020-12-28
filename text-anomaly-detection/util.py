@@ -105,9 +105,8 @@ def show_performance(pos, neg, recall_level=0.95):
     :param neg: 0's class scores
     '''
 
-    # auroc, aupr, fpr = get_measures(pos[:], neg[:], recall_level)
-    auroc, aupr = get_measures(pos[:], neg[:], recall_level)
-    # print('FPR{:d}:\t\t\t{:.2f}'.format(int(100 * recall_level), 100 * fpr))
+    auroc, aupr, fpr = get_measures(pos[:], neg[:], recall_level)
+    print('FPR{:d}:\t\t\t{:.2f}'.format(int(100 * recall_level), 100 * fpr))
     print('AUROC:\t\t\t{:.2f}'.format(100 * auroc))
     print('AUPR:\t\t\t{:.2f}'.format(100 * aupr))
 
@@ -120,10 +119,9 @@ def get_measures(_pos, _neg, recall_level=0.95):
 
     auroc = sk.roc_auc_score(labels, examples)
     aupr = sk.average_precision_score(labels, examples)
-    # fpr = fpr_and_fdr_at_recall(labels, examples, recall_level)
+    fpr = fpr_and_fdr_at_recall(labels, examples, recall_level)
 
-    # return auroc, aupr, fpr
-    return auroc, aupr
+    return auroc, aupr, fpr
 
 def fpr_and_fdr_at_recall(y_true, y_score, recall_level=0.95, pos_label=None):
     classes = np.unique(y_true)
