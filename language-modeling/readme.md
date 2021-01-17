@@ -21,12 +21,18 @@
 - 2018 | ICLR | Regularizing and Optimizing LSTM Language Models | Stephen Merity et al.
 - 2018 | An Analysis of Neural Language Modeling at Multiple Scales | Stephen Merity et al.
 - 2019 | NIPS | Discrete flows: Invertible generative models of discrete data | Dustin Tran et al.
+    - discrete flow model
 - 2019 | ICML | Latent Normalizing Flows for Discrete Sequences | Zachary M. Ziegler and Alexander M. Rush 
+    - latent flow model
 - 2020 | Categorical Normalizing Flows via Continuous Transformations | Phillip Lippe and Efstratios Gavves
+    - categorical flow model
 
 ## 参考代码
 - [salesforce/awd-lstm-lm](https://github.com/salesforce/awd-lstm-lm)
     - 未使用QRNN
 - [phlippe/CategoricalNF](https://github.com/phlippe/CategoricalNF)
 - [TrentBrick/PyTorchDiscreteFlows](https://github.com/TrentBrick/PyTorchDiscreteFlows)
+    - 离散高斯混合
+    - 采样(reverse)：scale出现0，无法进行除法
+    - 还未考虑二部流
 - [harvardnlp/TextFlow](https://github.com/harvardnlp/TextFlow)
