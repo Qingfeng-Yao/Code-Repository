@@ -3,6 +3,7 @@ import torch.nn.functional as F
 
 import numpy as np
 
+## rnn utils
 def batchify(data, bsz, device):
     # Work out how cleanly we can divide the dataset into bsz parts.
     nbatch = data.size(0) // bsz
