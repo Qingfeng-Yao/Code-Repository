@@ -296,6 +296,38 @@ def create_T_one_hot(length, dataset_max_len, dtype=torch.float32):
 	length_onehot = length_onehot * length_mask.unsqueeze(dim=-1)
 	return length_onehot
 
+def run_padded_LSTM(x, lstm_cell, length, input_memory=None, return_final_states=False):
+	if length is not None and (length != x.size(1)).sum() > 0:
+		# Sort input elements for efficient LSTM application
+		sorted_lengths, perm_index = length.sort(0, descending=True)
+		x = x[perm_index]
+
+		packed_input = torch.nn.utils.rnn.pack_padded_sequence(x, sorted_lengths.cpu(), batch_first=True)
+		packed_outputs, _ = lstm_cell(packed_input, input_memory)
+		outputs, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_outputs, batch_first=True)
+
+		# Redo sort
+		_, unsort_indices = perm_index.sort(0, descending=False)
+		outputs = outputs[unsort_indices]
+	else:
+		outputs, _ = lstm_cell(x, input_memory)
+	return outputs
+
+def run_sequential_with_mask(net, x, length=None, channel_padding_mask=None, src_key_padding_mask=None, length_one_hot=None, time_embed=None, gt=None, importance_weight=1, detail_out=False, **kwargs):
+	dict_detail_out = dict()
+	if channel_padding_mask is None:
+		nn_out = net(x)
+	else:
+		x = x * channel_padding_mask
+		for l in net:
+			x = l(x)
+		nn_out = x * channel_padding_mask # Making sure to zero out the outputs for all padding symbols
+
+	if not detail_out:
+		return nn_out
+	else:
+		return nn_out, dict_detail_out
+
 ## PriorDistribution
 class PriorDistribution(nn.Module):
 
@@ -686,234 +718,89 @@ class AdamW(Optimizer):
 
         return loss
 
+## flow model related
+def create_embed_layer(vocab, vocab_size, default_embed_layer_dims):
+	## Creating an embedding layer either from a torchtext vocabulary or from scratch
+	use_vocab_vectors = (vocab is not None and vocab.vectors is not None)
+	embed_layer_dims = vocab.vectors.shape[1] if use_vocab_vectors else default_embed_layer_dims
+	vocab_size = len(vocab) if use_vocab_vectors else vocab_size
+	embed_layer = nn.Embedding(vocab_size, embed_layer_dims)
+	if use_vocab_vectors:
+		embed_layer.weight.data.copy_(vocab.vectors)
+		embed_layer.weight.requires_grad = True
+	return embed_layer, vocab_size
 
+def safe_log(x):
+	return torch.log(x.clamp(min=1e-22))
 
+def _log_pdf(x, mean, log_scale):
+	"""Element-wise log density of the logistic distribution."""
+	z = (x - mean) * torch.exp(-log_scale)
+	log_p = z - log_scale - 2 * F.softplus(z)
 
+	return log_p
 
+def _log_cdf(x, mean, log_scale):
+	"""Element-wise log CDF of the logistic distribution."""
+	z = (x - mean) * torch.exp(-log_scale)
+	log_p = F.logsigmoid(z)
 
-# def create_embed_layer(vocab, vocab_size, default_embed_layer_dims):
-# 	## Creating an embedding layer either from a torchtext vocabulary or from scratch
-# 	use_vocab_vectors = (vocab is not None and vocab.vectors is not None)
-# 	embed_layer_dims = vocab.vectors.shape[1] if use_vocab_vectors else default_embed_layer_dims
-# 	vocab_size = len(vocab) if use_vocab_vectors else vocab_size
-# 	embed_layer = nn.Embedding(vocab_size, embed_layer_dims)
-# 	if use_vocab_vectors:
-# 		embed_layer.weight.data.copy_(vocab.vectors)
-# 		embed_layer.weight.requires_grad = True
-# 	return embed_layer, vocab_size
+	return log_p
 
-# def create_decoder(num_categories, num_dims, config, **kwargs):
-# 	num_layers = get_param_val(config, "num_layers", 1)
-# 	hidden_size = get_param_val(config, "hidden_size", 64)
+def mixture_log_pdf(x, prior_logits, means, log_scales):
+	"""Log PDF of a mixture of logistic distributions."""
+	log_ps = F.log_softmax(prior_logits, dim=-1) \
+		+ _log_pdf(x.unsqueeze(dim=-1), means, log_scales)
+	log_p = torch.logsumexp(log_ps, dim=-1)
 
-# 	return DecoderLinear(num_categories, 
-# 						 embed_dim=num_dims, 
-# 						 hidden_size=hidden_size, 
-# 						 num_layers=num_layers,
-# 						 **kwargs)
+	return log_p
 
+def mixture_log_cdf(x, prior_logits, means, log_scales):
+	"""Log CDF of a mixture of logistic distributions."""
+	log_ps = F.log_softmax(prior_logits, dim=-1) \
+		+ _log_cdf(x.unsqueeze(dim=-1), means, log_scales)
+	log_p = torch.logsumexp(log_ps, dim=-1)
 
-# class DecoderLinear(nn.Module):
-# 	"""
-# 	A simple linear decoder with flexible number of layers. 
-# 	"""
+	return log_p
 
-# 	def __init__(self, num_categories, embed_dim, hidden_size, num_layers, class_prior_log=None):
-# 		super().__init__()
-# 		self.hidden_size = hidden_size
-# 		self.num_layers = num_layers
+def mixture_inv_cdf(y, prior_logits, means, log_scales,
+            		eps=1e-10, max_iters=100):
+	# Inverse CDF of a mixture of logisitics. Iterative algorithm.
+	if y.min() <= 0 or y.max() >= 1:
+		raise RuntimeError('Inverse logisitic CDF got y outside (0, 1)')
 
-# 		self.layers = LinearNet(c_in=3*embed_dim, 
-# 								c_out=num_categories,
-# 								hidden_size=hidden_size,
-# 								num_layers=num_layers)
-# 		self.log_softmax = nn.LogSoftmax(dim=-1)
+	def body(x_, lb_, ub_):
+		cur_y = torch.exp(mixture_log_cdf(x_, prior_logits, means,
+		                                  log_scales))
+		gt = (cur_y > y).type(y.dtype)
+		lt = 1 - gt
+		new_x_ = gt * (x_ + lb_) / 2. + lt * (x_ + ub_) / 2.
+		new_lb = gt * lb_ + lt * x_
+		new_ub = gt * x_ + lt * ub_
+		return new_x_, new_lb, new_ub
 
-# 		if class_prior_log is not None:
-# 			if isinstance(class_prior_log, np.ndarray):
-# 				class_prior_log = torch.from_numpy(class_prior_log)
-# 			self.layers.set_bias(class_prior_log)
+	x = torch.zeros_like(y)
+	max_scales = torch.sum(torch.exp(log_scales), dim=-1, keepdim=True)
+	lb, _ = (means - 20 * max_scales).min(dim=-1)
+	ub, _ = (means + 20 * max_scales).max(dim=-1)
+	diff = float('inf')
 
-# 	def forward(self, z_cont):
-# 		z_cont = torch.cat([z_cont, F.elu(z_cont), F.elu(-z_cont)], dim=-1)
-# 		out = self.layers(z_cont)
-# 		logits = self.log_softmax(out)
-# 		return logits
+	i = 0
+	while diff > eps and i < max_iters:
+		new_x, lb, ub = body(x, lb, ub)
+		diff = (new_x - x).abs().max()
+		x = new_x
+		i += 1
 
-# 	def info(self):
-# 		return "Linear model with hidden size %i and %i layers" % (self.hidden_size, self.num_layers)
+	return x
 
-# class LinearNet(nn.Module):
+def inverse(x, reverse=False):
+	"""Inverse logistic function."""
+	if reverse:
+		z = torch.sigmoid(x)
+		ldj = F.softplus(x) + F.softplus(-x)
+	else:
+		z = -safe_log(x.reciprocal() - 1.)
+		ldj = -safe_log(x) - safe_log(1. - x)
 
-# 	def __init__(self, c_in, c_out, num_layers, hidden_size, ext_input_dims=0, zero_init=False):
-# 		super().__init__()
-# 		self.inp_layer = nn.Sequential(
-# 				nn.Linear(c_in, hidden_size),
-# 				nn.GELU()
-# 			)
-# 		self.main_net = []
-# 		for i in range(num_layers):
-# 			self.main_net += [
-# 				nn.Linear(hidden_size if i>0 else hidden_size + ext_input_dims, 
-# 						  hidden_size),
-# 				nn.GELU()
-# 			]
-# 		self.main_net += [
-# 			nn.Linear(hidden_size, c_out)
-# 		]
-# 		self.main_net = nn.Sequential(*self.main_net)
-# 		if zero_init:
-# 			self.main_net[-1].weight.data.zero_()
-# 			self.main_net[-1].bias.data.zero_()
-
-# 	def forward(self, x, ext_input=None, **kwargs):
-# 		x_feat = self.inp_layer(x)
-# 		if ext_input is not None:
-# 			x_feat = torch.cat([x_feat, ext_input], dim=-1)
-# 		out = self.main_net(x_feat)
-# 		return out
-
-# 	def set_bias(self, bias):
-# 		self.main_net[-1].bias.data = bias
-
-# class SimpleLinearLayer(nn.Module):
-
-# 	def __init__(self, c_in, c_out, data_init=False):
-# 		super().__init__()
-# 		self.layer = nn.Linear(c_in, c_out)
-# 		if data_init:
-# 			scale_dims = int(c_out//2)
-# 			self.layer.weight.data[scale_dims:,:] = 0
-# 			self.layer.weight.data = self.layer.weight.data * 4 / np.sqrt(c_out/2)
-# 			self.layer.bias.data.zero_()
-
-# 	def forward(self, x, **kwargs):
-# 		return self.layer(x)
-
-# 	def initialize_zeros(self):
-# 		self.layer.weight.data.zero_()
-# 		self.layer.bias.data.zero_()
-
-
-
-
-
-
-# def _log_pdf(x, mean, log_scale):
-# 	"""Element-wise log density of the logistic distribution."""
-# 	z = (x - mean) * torch.exp(-log_scale)
-# 	log_p = z - log_scale - 2 * F.softplus(z)
-
-# 	return log_p
-
-# def mixture_log_pdf(x, prior_logits, means, log_scales):
-# 	"""Log PDF of a mixture of logistic distributions."""
-# 	log_ps = F.log_softmax(prior_logits, dim=-1) \
-# 		+ _log_pdf(x.unsqueeze(dim=-1), means, log_scales)
-# 	log_p = torch.logsumexp(log_ps, dim=-1)
-
-# 	return log_p
-
-# def safe_log(x):
-# 	return torch.log(x.clamp(min=1e-22))
-
-# def inverse(x, reverse=False):
-# 	"""Inverse logistic function."""
-# 	if reverse:
-# 		z = torch.sigmoid(x)
-# 		ldj = F.softplus(x) + F.softplus(-x)
-# 	else:
-# 		z = -safe_log(x.reciprocal() - 1.)
-# 		ldj = -safe_log(x) - safe_log(1. - x)
-
-# 	return z, ldj
-
-# def mixture_log_pdf(x, prior_logits, means, log_scales):
-# 	"""Log PDF of a mixture of logistic distributions."""
-# 	log_ps = F.log_softmax(prior_logits, dim=-1) \
-# 		+ _log_pdf(x.unsqueeze(dim=-1), means, log_scales)
-# 	log_p = torch.logsumexp(log_ps, dim=-1)
-
-# 	return log_p
-
-# def _log_cdf(x, mean, log_scale):
-# 	"""Element-wise log CDF of the logistic distribution."""
-# 	z = (x - mean) * torch.exp(-log_scale)
-# 	log_p = F.logsigmoid(z)
-
-# 	return log_p
-
-# def mixture_log_cdf(x, prior_logits, means, log_scales):
-# 	"""Log CDF of a mixture of logistic distributions."""
-# 	log_ps = F.log_softmax(prior_logits, dim=-1) \
-# 		+ _log_cdf(x.unsqueeze(dim=-1), means, log_scales)
-# 	log_p = torch.logsumexp(log_ps, dim=-1)
-
-# 	return log_p
-
-# def mixture_inv_cdf(y, prior_logits, means, log_scales,
-#             		eps=1e-10, max_iters=100):
-# 	# Inverse CDF of a mixture of logisitics. Iterative algorithm.
-# 	if y.min() <= 0 or y.max() >= 1:
-# 		raise RuntimeError('Inverse logisitic CDF got y outside (0, 1)')
-
-# 	def body(x_, lb_, ub_):
-# 		cur_y = torch.exp(mixture_log_cdf(x_, prior_logits, means,
-# 		                                  log_scales))
-# 		gt = (cur_y > y).type(y.dtype)
-# 		lt = 1 - gt
-# 		new_x_ = gt * (x_ + lb_) / 2. + lt * (x_ + ub_) / 2.
-# 		new_lb = gt * lb_ + lt * x_
-# 		new_ub = gt * x_ + lt * ub_
-# 		return new_x_, new_lb, new_ub
-
-# 	x = torch.zeros_like(y)
-# 	max_scales = torch.sum(torch.exp(log_scales), dim=-1, keepdim=True)
-# 	lb, _ = (means - 20 * max_scales).min(dim=-1)
-# 	ub, _ = (means + 20 * max_scales).max(dim=-1)
-# 	diff = float('inf')
-
-# 	i = 0
-# 	while diff > eps and i < max_iters:
-# 		new_x, lb, ub = body(x, lb, ub)
-# 		diff = (new_x - x).abs().max()
-# 		x = new_x
-# 		i += 1
-
-# 	return x
-
-# def run_padded_LSTM(x, lstm_cell, length, input_memory=None, return_final_states=False):
-# 	if length is not None and (length != x.size(1)).sum() > 0:
-# 		# Sort input elements for efficient LSTM application
-# 		sorted_lengths, perm_index = length.sort(0, descending=True)
-# 		x = x[perm_index]
-
-# 		packed_input = torch.nn.utils.rnn.pack_padded_sequence(x, sorted_lengths, batch_first=True)
-# 		packed_outputs, _ = lstm_cell(packed_input, input_memory)
-# 		outputs, _ = torch.nn.utils.rnn.pad_packed_sequence(packed_outputs, batch_first=True)
-
-# 		# Redo sort
-# 		_, unsort_indices = perm_index.sort(0, descending=False)
-# 		outputs = outputs[unsort_indices]
-# 	else:
-# 		outputs, _ = lstm_cell(x, input_memory)
-# 	return outputs
-
-# def run_sequential_with_mask(net, x, length=None, channel_padding_mask=None, src_key_padding_mask=None, length_one_hot=None, time_embed=None, gt=None, importance_weight=1, detail_out=False, **kwargs):
-# 	dict_detail_out = dict()
-# 	if channel_padding_mask is None:
-# 		nn_out = net(x)
-# 	else:
-# 		x = x * channel_padding_mask
-# 		for l in net:
-# 			x = l(x)
-# 		nn_out = x * channel_padding_mask # Making sure to zero out the outputs for all padding symbols
-
-# 	if not detail_out:
-# 		return nn_out
-# 	else:
-# 		return nn_out, dict_detail_out
-
-
-
-
+	return z, ldj

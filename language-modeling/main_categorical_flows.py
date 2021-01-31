@@ -222,8 +222,8 @@ train_data_loader_iter = iter(train_data_loader) # Needed to retrieve batch by b
 use_rnn = categorical_util.get_param_val(model_params, "use_rnn", default_val=False)
 if use_rnn:
     model = LSTMModel(num_classes=len(vocab_dict), vocab=vocab_torchtext, model_params=model_params)
-# else:
-#     model = FlowLanguageModeling(args, vocab_size=len(vocab_dict), vocab=vocab_torchtext, dataset_class=dataset_class)
+else:
+    model = FlowLanguageModeling(model_params=model_params, vocab_size=len(vocab_dict), vocab=vocab_torchtext, dataset_class=dataset_class)
 
 # print(model)
 model = model.to(device)
@@ -373,13 +373,13 @@ def _eval_batch_rnn(x_in, x_length, x_channel_mask, **kwargs):
     loss = -logprob.mean()
     return loss
 
-# def _eval_batch_flow(x_in, x_length, x_channel_mask, is_test=False, **kwargs):
-#     z, ldj, ldj_per_layer = model(x_in, reverse=False, get_ldj_per_layer=True, 
-#                                         length=x_length)
-#     neglog_prob = -(prior_distribution.log_prob(z) * x_channel_mask).sum(dim=[1,2])
-#     neg_ldj = -ldj
-#     loss, _, _ = _calc_loss(neg_ldj, neglog_prob, x_length)
-#     return loss
+def _eval_batch_flow(x_in, x_length, x_channel_mask, is_test=False, **kwargs):
+    z, ldj, ldj_per_layer = model(x_in, reverse=False, get_ldj_per_layer=True, 
+                                        length=x_length)
+    neglog_prob = -(prior_distribution.log_prob(z) * x_channel_mask).sum(dim=[1,2])
+    neg_ldj = -ldj
+    loss, _, _ = _calc_loss(neg_ldj, neglog_prob, x_length)
+    return loss
 
 def _calc_loss(neg_ldj, neglog_prob, x_length):
     neg_ldj = (neg_ldj / x_length.float())
@@ -490,21 +490,21 @@ def _train_batch_rnn(x_in, x_length, x_channel_mask, **kwargs):
     loss = -logprob.mean()
     return loss
 
-# def _train_batch_flow(x_in, x_length, x_channel_mask, iteration=0, **kwargs):
-#     z, ldj, ldj_per_layer = model(x_in, reverse=False, get_ldj_per_layer=True, 
-#                                         beta=self.beta_scheduler.get(iteration),
-#                                         length=x_length)
-#     neglog_prob = -(prior_distribution.log_prob(z) * x_channel_mask).sum(dim=[1,2])
-#     neg_ldj = -ldj
+def _train_batch_flow(x_in, x_length, x_channel_mask, iteration=0, **kwargs):
+    z, ldj, ldj_per_layer = model(x_in, reverse=False, get_ldj_per_layer=True, 
+                                        beta=beta_scheduler.get(iteration),
+                                        length=x_length)
+    neglog_prob = -(prior_distribution.log_prob(z) * x_channel_mask).sum(dim=[1,2])
+    neg_ldj = -ldj
     
-#     loss, neg_ldj, neglog_prob = _calc_loss(neg_ldj, neglog_prob, x_length)
+    loss, neg_ldj, neglog_prob = _calc_loss(neg_ldj, neglog_prob, x_length)
 
-#     summary_dict["log_prob"].append(neglog_prob.item())
-#     summary_dict["ldj"].append(neg_ldj.item())
-#     summary_dict["beta"] = beta_scheduler.get(iteration)
-#     _ldj_per_layer_to_summary(ldj_per_layer)
+    summary_dict["log_prob"].append(neglog_prob.item())
+    summary_dict["ldj"].append(neg_ldj.item())
+    summary_dict["beta"] = beta_scheduler.get(iteration)
+    _ldj_per_layer_to_summary(ldj_per_layer)
 
-#     return loss
+    return loss
 
 def add_summary(writer, iteration, checkpoint_path=None):
 	# Adding metrics collected during training to the tensorboard
