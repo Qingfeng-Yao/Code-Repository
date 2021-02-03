@@ -371,6 +371,7 @@ class FlowLanguageModeling(FlowModel):
 			for batch, kwargs in batch_list:
 				kwargs["src_key_padding_mask"] = categorical_util.create_transformer_mask(kwargs["length"])
 				kwargs["channel_padding_mask"] = categorical_util.create_channel_mask(kwargs["length"])
+			# print(batch_list[0][0].shape)
 			for layer_index, layer in enumerate(self.flow_layers):
 				batch_list = FlowModel.run_data_init_layer(batch_list, layer)
 				# print(batch_list[0][0].shape)
@@ -835,6 +836,44 @@ class ExtActNormFlow(FlowLayer):
 	def info(self):
 		return "External Activation Normalizing Flow (c_in=%i)" % (self.c_in)
 
+class SigmoidFlow(FlowLayer):
+	"""
+	Applies a sigmoid on an output
+	"""
+
+	def __init__(self, reverse=False):
+		super().__init__()
+		self.sigmoid = nn.Sigmoid()
+		self.reverse_layer = reverse
+
+	def forward(self, z, ldj=None, reverse=False, sum_ldj=True, **kwargs):
+		if ldj is None:
+			ldj = z.new_zeros(z.size(0),)
+
+		alpha = 1e-5
+		reverse = (self.reverse_layer != reverse) # XOR over reverse parameters
+
+		if not reverse:
+			layer_ldj = -z - 2 * F.softplus(-z)
+			z = torch.sigmoid(z)
+		else:
+			z = z*(1-alpha) + alpha*0.5 # Remove boundaries of 0 and 1 (which would result in minus infinity and inifinity)
+			layer_ldj = (-torch.log(z) - torch.log(1-z) + math.log(1 - alpha))
+			z = torch.log(z) - torch.log(1-z)
+
+		assert torch.isnan(z).sum() == 0, "[!] ERROR: z contains NaN values."
+		assert torch.isnan(layer_ldj).sum() == 0, "[!] ERROR: ldj contains NaN values."
+
+		if sum_ldj:
+			ldj = ldj + layer_ldj.view(z.size(0), -1).sum(dim=1)
+		else:
+			ldj = layer_ldj
+
+		return z, ldj
+
+	def info(self):
+		return "Sigmoid Flow"
+
 class CouplingLayer(FlowLayer):
 
 	def __init__(self, c_in, mask, 
@@ -1204,6 +1243,266 @@ def create_encoding(encoding_params, dataset_class, vocab=None, vocab_size=-1, c
 						 vocab_size=vocab_size,
 						 category_prior=category_prior,
 						 **encoding_params)
+
+class VariationalDequantization(FlowLayer):
+	"""
+	Flow layer to encode discrete variables using variational dequantization.
+	"""
+
+	def __init__(self, num_dimensions, flow_config, 
+					   vocab=None, vocab_size=-1, 
+					   default_embed_layer_dims=128,
+					   **kwargs):
+		super().__init__()
+		self.embed_layer, self.vocab_size = categorical_util.create_embed_layer(vocab, vocab_size, default_embed_layer_dims)
+		self.flow_layers = self._create_flows(flow_config, self.embed_layer.weight.shape[1])
+		self.sigmoid_flow = SigmoidFlow(reverse=True)
+		self.D = num_dimensions
+
+	def _create_flows(self, config, embed_dims):
+		num_flows = categorical_util.get_param_val(config, "num_flows", 4)
+		model_func = categorical_util.get_param_val(config, "model_func", allow_default=False)
+		block_type = categorical_util.get_param_val(config, "block_type", None)
+
+		def _create_block(flow_index):
+			# For variational dequantization we apply a combination of activation normalization and coupling layers.
+			# Invertible convolutions are not useful here as our dimensionality is 1 anyways 
+			mask = CouplingLayer.create_chess_mask()
+			if flow_index % 2 == 0:
+				mask = 1 - mask
+			return [
+				ActNormFlow(c_in=1, data_init=False),
+				CouplingLayer(c_in=1, 
+							mask=mask, 
+							model_func=model_func,
+							block_type=block_type)
+			]
+
+		flow_layers = []
+		for flow_index in range(num_flows):
+			flow_layers += _create_block(flow_index)
+
+		return nn.ModuleList(flow_layers)
+
+	def forward(self, z, ldj=None, reverse=False, **kwargs):
+		batch_size, seq_length = z.size(0), z.size(1)
+
+		if ldj is None:
+			ldj = z.new_zeros(z.size(0), dtype=torch.float32)
+		
+		if not reverse:
+			# Sample from noise distribution, modeled by the normalizing flow
+			# rand_inp = torch.rand_like(z, dtype=torch.float32).unsqueeze(dim=-1) 	# Output range [0,1]
+			rand_inp = torch.rand((batch_size, seq_length, self.D), dtype=torch.float32, device=z.device)
+			rand_inp, ldj = self.sigmoid_flow(rand_inp, ldj=ldj, reverse=False) 	# Output range [-inf,inf]
+			rand_inp, ldj = self._flow_forward(rand_inp, z, ldj, **kwargs) 			# Output range [-inf,inf]
+			rand_inp, ldj = self.sigmoid_flow(rand_inp, ldj=ldj, reverse=True) 		# Output range [0,1]
+			# Checking that noise is indeed in the range [0,1]. Any value outside indicates a numerical issue in the dequantization flow
+			assert (rand_inp<0.0).sum() == 0 and (rand_inp>1.0).sum() == 0, "ERROR: Variational Dequantization output is out of bounds.\n" + \
+					str(torch.where(rand_inp<0.0)) + "\n" + \
+					str(torch.where(rand_inp>1.0))
+			# Adding the noise to the discrete values
+			z_out = z.to(torch.float32).unsqueeze(dim=-1) + rand_inp
+			assert torch.isnan(z_out).sum() == 0, "ERROR: Found NaN values in variational dequantization.\n" + \
+					"NaN z_out: " + str(torch.isnan(z_out).sum().item()) + "\n" + \
+					"NaN rand_inp: " + str(torch.isnan(rand_inp).sum().item()) + "\n" + \
+					"NaN ldj: " + str(torch.isnan(ldj).sum().item())
+		else:
+			# Inverting the flow is done by finding the next whole integer for each continuous value
+			z_out = torch.floor(z).clamp(min=0, max=self.vocab_size-1)
+			z_out = z_out.long().squeeze(dim=-1)
+
+		return z_out, ldj
+
+	def _flow_forward(self, rand_inp, z, ldj, **kwargs):
+		# Adding discrete values to flow transformation input by an embedding layer 
+		embed_features = self.embed_layer(z)
+		for flow in self.flow_layers:
+			rand_inp, ldj = flow(rand_inp, ldj, ext_input=embed_features, reverse=False, **kwargs)
+		return rand_inp, ldj
+
+	def info(self):
+		s = "Variational Dequantization with %i flows.\n" % (len(self.flow_layers))
+		s += "\n".join(["-> [%i] " % (flow_index+1) + flow.info() for flow_index, flow in enumerate(self.flow_layers)])
+		return s
+
+class VariationalCategoricalEncoding(FlowLayer):
+	"""
+	Class for implementing the variational encoding scheme of Categorical Normalizing Flows.
+	"""
+
+	def __init__(self, num_dimensions, flow_config,
+					   dataset_class=None,
+					   vocab=None, vocab_size=-1, 
+					   use_decoder=False, decoder_config=None, 
+					   default_embed_layer_dims=64,
+					   category_prior=None,
+					   **kwargs):
+		super().__init__()
+		self.use_decoder = use_decoder
+		self.dataset_class = dataset_class
+		self.D = num_dimensions
+
+		self.embed_layer, self.vocab_size = categorical_util.create_embed_layer(vocab, vocab_size, default_embed_layer_dims)
+		self.num_categories = self.vocab_size
+	
+		self.prior_distribution = categorical_util.LogisticDistribution(mu=0.0, sigma=1.0) # Prior distribution in encoding flows
+		self.flow_layers = self._create_flows(num_dims=num_dimensions, 
+										 embed_dims=self.embed_layer.weight.shape[1], 
+										 config=flow_config)
+		# Create decoder if needed
+		if self.use_decoder:
+			self.decoder = self.create_decoder(num_categories=self.vocab_size, 
+									  num_dims=self.D,
+									  config=decoder_config)
+
+	def create_decoder(self, num_categories, num_dims, config, **kwargs):
+		num_layers = categorical_util.get_param_val(config, "num_layers", 1)
+		hidden_size = categorical_util.get_param_val(config, "hidden_size", 64)
+
+		return DecoderLinear(num_categories, 
+						 embed_dim=num_dims, 
+						 hidden_size=hidden_size, 
+						 num_layers=num_layers,
+						 **kwargs)
+
+	def _create_flows(self, num_dims, embed_dims, config):
+		num_flows = categorical_util.get_param_val(config, "num_flows", 0)
+		model_func = categorical_util.get_param_val(config, "model_func", allow_default=False)
+		block_type = categorical_util.get_param_val(config, "block_type", None)
+		num_mixtures = categorical_util.get_param_val(config, "num_mixtures", 8)
+		
+		# For the activation normalization, we map an embedding to scaling and bias with a single layer
+		block_fun_actn = lambda : SimpleLinearLayer(c_in=embed_dims, c_out=2*num_dims, data_init=True)
+		
+		permut_layer = lambda flow_index : InvertibleConv(c_in=num_dims)
+		actnorm_layer = lambda flow_index : ExtActNormFlow(c_in=num_dims, 
+														net=block_fun_actn())
+
+		if num_dims > 1:
+			mask = CouplingLayer.create_channel_mask(c_in=num_dims)
+			mask_func = lambda _ : mask
+		else:
+			mask = CouplingLayer.create_chess_mask()
+			mask_func = lambda flow_index : mask if flow_index%2 == 0 else 1-mask
+
+		coupling_layer = lambda flow_index : MixtureCDFCoupling(c_in=num_dims, 
+																mask=mask_func(flow_index), 
+																block_type=block_type,
+																model_func=model_func,
+																num_mixtures=num_mixtures)
+
+		flow_layers = []
+		if num_flows == 0: # Num_flows == 0 => mixture model
+			flow_layers += [actnorm_layer(flow_index=0)]
+		else:
+			for flow_index in range(num_flows):
+				flow_layers += [
+					actnorm_layer(flow_index), 
+					permut_layer(flow_index),
+					coupling_layer(flow_index)
+				]
+
+		return nn.ModuleList(flow_layers)
+		
+
+	def forward(self, z, ldj=None, reverse=False, beta=1, delta=0.0, channel_padding_mask=None, **kwargs):
+		## We reshape z into [batch, 1, ...] as every categorical variable is considered to be independent.
+		batch_size, seq_length = z.size(0), z.size(1)
+		z = z.reshape((batch_size * seq_length, 1) + z.shape[2:])
+		if channel_padding_mask is not None:
+			channel_padding_mask = channel_padding_mask.reshape(batch_size * seq_length, 1, -1)
+		else:
+			channel_padding_mask = z.new_ones((batch_size * seq_length, 1, 1), dtype=torch.float32)
+
+		ldj_loc = z.new_zeros(z.size(0), dtype=torch.float32)
+		detailed_ldj = {}
+		
+		if not reverse:
+			# z is of shape [Batch, SeqLength]
+			z_categ = z # Renaming here for better readability (what is discrete and what is continuous)
+
+			## 1.) Forward pass of current token flow
+			z_cont = self.prior_distribution.sample(shape=(batch_size * seq_length, 1, self.D)).to(z_categ.device)
+			init_log_p = self.prior_distribution.log_prob(z_cont).sum(dim=[1,2])
+			z_cont, ldj_forward = self._flow_forward(z_cont, z_categ, reverse=False)
+
+			## 2.) Approach-specific calculation of the posterior
+			class_prob_log = self._decoder_forward(z_cont, z_categ)
+
+			## 3.) Calculate final LDJ
+			ldj_loc = (beta * class_prob_log - (init_log_p - ldj_forward))
+			ldj_loc = ldj_loc * channel_padding_mask.squeeze()
+			z_cont = z_cont * channel_padding_mask
+			z_out = z_cont
+
+			## 4.) Statistics for debugging/monotoring
+			if self.training:
+				with torch.no_grad():
+					z_min = z_out.min()
+					z_max = z_out.max()
+					z_std = z_out.view(-1, z_out.shape[-1]).std(0).mean()
+					channel_padding_mask = channel_padding_mask.squeeze()
+					detailed_ldj = {"avg_token_prob": (class_prob_log.exp() * channel_padding_mask).sum()/channel_padding_mask.sum(), 
+									"avg_token_bpd": -(class_prob_log * channel_padding_mask).sum()/channel_padding_mask.sum() * np.log2(np.exp(1)),
+									"z_min": z_min,
+									"z_max": z_max,
+									"z_std": z_std}
+					detailed_ldj = {key: val.detach() for key, val in detailed_ldj.items()}
+
+		else:
+			# z is of shape [Batch * seq_len, 1, D]
+			assert z.size(-1) == self.D, "[!] ERROR in categorical decoding: Input must have %i latent dimensions but got %i" % (self.D, z.shape[-1])
+
+			class_prior_log = self.category_prior[None,None,:]
+			z_cont = z
+			z_out = self._decoder_sample(z_cont)
+
+		# Reshape output back to original shape
+		if not reverse:
+			z_out = z_out.reshape(batch_size, seq_length, -1)
+		else:
+			z_out = z_out.reshape(batch_size, seq_length)
+		ldj_loc = ldj_loc.reshape(batch_size, seq_length).sum(dim=-1)
+		
+		# Add LDJ 
+		if ldj is not None:
+			ldj = ldj + ldj_loc
+		else:
+			ldj = ldj_loc
+
+		return z_out, ldj, detailed_ldj
+
+
+	def _flow_forward(self, z_cont, z_categ, reverse, **kwargs):
+		ldj = z_cont.new_zeros(z_cont.size(0), dtype=torch.float32)
+		embed_features = self.embed_layer(z_categ)
+		
+		for flow in (self.flow_layers if not reverse else reversed(self.flow_layers)):
+			z_cont, ldj = flow(z_cont, ldj, ext_input=embed_features, reverse=reverse, **kwargs)
+
+		return z_cont, ldj
+
+
+	def _decoder_forward(self, z_cont, z_categ, **kwargs):
+		## Applies the deocder on every continuous variable independently and return probability of GT class
+		class_prob_log = self.decoder(z_cont)
+		class_prob_log = class_prob_log.gather(dim=-1, index=z_categ.view(-1,1)[:,:,None])
+		return class_prob_log.sum(dim=[1,2])
+
+
+	def _decoder_sample(self, z_cont, **kwargs):
+		## Sampling from decoder by taking the argmax.
+		# We could also sample from the probabilities, however experienced that the argmax gives more stable results.
+		# Presumably because the decoder has also seen values sampled from the encoding distributions and not anywhere besides that.
+		return self.decoder(z_cont).argmax(dim=-1)
+
+
+	def info(self):
+		s = "Variational Encodings of categories, with %i dimensions and %i flows.\n" % (self.D, len(self.flow_layers))
+		s += "-> Decoder network: %s\n" % self.decoder.info()
+		s += "\n".join(["-> [%i] " % (flow_index+1) + flow.info() for flow_index, flow in enumerate(self.flow_layers)])
+		return s
 
 class LinearCategoricalEncoding(FlowLayer):
 	"""

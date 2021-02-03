@@ -35,8 +35,9 @@
     - flow+lstm
         - LSTM: `python3 main_categorical_flows.py --use_rnn --dataset penntreebank --max_iterations 100000 --max_seq_len 288 --batch_size 128 --encoding_dim 3 --coupling_hidden_layers 1 --coupling_num_mixtures 51 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --optimizer 4 --learning_rate 7.5e-4`或者`python3 main_categorical_flows.py --use_rnn --dataset text8 --max_iterations 100000 --max_seq_len 256 --batch_size 128 --encoding_dim 3 --coupling_hidden_layers 2 --coupling_num_mixtures 27 --coupling_dropout 0.0 --coupling_input_dropout 0.05 --optimizer 4 --learning_rate 7.5e-4`或者`python3 main_categorical_flows.py --use_rnn --dataset wikitext --max_iterations 100000 --max_seq_len 256 --batch_size 128 --encoding_dim 10 --coupling_hidden_layers 2 --coupling_num_mixtures 64 --coupling_dropout 0.0 --coupling_input_dropout 0.05 --optimizer 4 --learning_rate 7.5e-4`
         - flow: 命令与上类似，去掉参数`--use_rnn`
-        - 运行结果：LSTM/1.44bpd(text8); flow/1.39bpd(penntreebank)/1.46bpd(text8)
+        - 运行结果：LSTM/1.41pbd(penntreebank)/1.44bpd(text8); flow/1.39bpd(penntreebank)/1.46bpd(text8)
         - wikitext数据集暂时不能在一块gpu上运行
+    - 编码层：变分去量化(添加噪声)、变分类编码(使用decoder)、线性类编码(不使用decoder/已实现)
     - 运行程序前需要先下载好数据集，在nlpdata文件下
 - [TrentBrick/PyTorchDiscreteFlows](https://github.com/TrentBrick/PyTorchDiscreteFlows)
     - 离散高斯混合
