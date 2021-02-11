@@ -37,3 +37,8 @@
 | :----: | :----: | :----: | 
 | LSTM | 1.41pbd | 1.44pbd | 
 | categorical flow model | 1.39pbd | 1.46pbd | 
+
+categorical flow model
+|  | 线性类编码 | 变分去量化 | 变分类编码 | 
+| :----: | :----: | :----: | :----: | 
+| penntreebank | 1.39pbd | 2.38pbd | 1.39pbd |
