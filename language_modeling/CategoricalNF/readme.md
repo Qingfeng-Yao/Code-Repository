@@ -17,7 +17,7 @@
 ## 指标
 - NLL(负对数似然)，单位bpd(bits per dimension)
 
-## 具体实现命令及实验结果
+## 具体实现命令
 - 运行程序前需要提前下载好数据集，存放在目录data下
 - LSTM模型实现
     - penntreebank: `python3 main.py --use_rnn --dataset penntreebank --max_iterations 100000 --max_seq_len 288 --batch_size 128 --encoding_dim 3 --coupling_hidden_layers 1 --coupling_num_mixtures 51 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --optimizer 4 --learning_rate 7.5e-4`  测试集指标1.41pbd
@@ -31,3 +31,9 @@
         - penntreebank: `python3 main.py --dataset penntreebank --max_iterations 100000 --max_seq_len 288 --batch_size 128 --encoding_dim 3 --coupling_hidden_layers 1 --coupling_num_mixtures 51 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --optimizer 4 --learning_rate 7.5e-4 --encoding_dequantization`  测试集指标2.38pbd
     - 变分类编码(使用decoder，而线性类编码不使用decoder)(添加参数`--encoding_use_decoder --encoding_variational`)
         - penntreebank: `python3 main.py --dataset penntreebank --max_iterations 100000 --max_seq_len 288 --batch_size 128 --encoding_dim 3 --coupling_hidden_layers 1 --coupling_num_mixtures 51 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --optimizer 4 --learning_rate 7.5e-4 --encoding_use_decoder --encoding_variational`  测试集指标1.39pbd
+
+## 实验结果
+|  | penntreebank | text8 |
+| :----: | :----: | :----: | 
+| LSTM | 1.41pbd | 1.44pbd | 
+| categorical flow model | 1.39pbd | 1.46pbd | 
