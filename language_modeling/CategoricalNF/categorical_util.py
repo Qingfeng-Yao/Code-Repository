@@ -804,3 +804,11 @@ def inverse(x, reverse=False):
 		ldj = -safe_log(x) - safe_log(1. - x)
 
 	return z, ldj
+
+class WrappedDataParallel(nn.DataParallel):
+
+	def __getattr__(self, name):
+		try:
+			return super().__getattr__(name)
+		except AttributeError:
+			return getattr(self.module, name)

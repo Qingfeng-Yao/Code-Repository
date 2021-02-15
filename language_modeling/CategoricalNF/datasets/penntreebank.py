@@ -39,6 +39,7 @@ class PennTreeBankDataset(data.Dataset):
 		self.data = [np.array(sent) for sent in words if (len(sent) != 0 and len(sent)<self.max_seq_len)]
 
 		print("Length of dataset: ", len(self))
+		print("Num of tokens: ", sum([len(s) for s in self.data]))
 
 
 	def __len__(self):

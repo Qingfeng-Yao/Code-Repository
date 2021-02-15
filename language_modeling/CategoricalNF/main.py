@@ -35,6 +35,7 @@ parser.add_argument(
     action='store_true',
     default=False,
     help='if selected, a RNN is used as model instead of a Categorical Normalizing Flow')
+parser.add_argument('--use_multi_gpu', action='store_true', default=False, help='Whether to use all GPUs available or only one.')
 
 parser.add_argument(
     '--no-cuda',
@@ -192,6 +193,7 @@ else:
     assert False, "[!] ERROR: Unknown dataset class \"%s\"" % (dataset_name)
 
 vocab_dict = dataset_class.get_vocabulary()
+print("K = {}".format(len(vocab_dict)))
 vocab_torchtext = dataset_class.get_torchtext_vocab()
 
 train_epoch = 0
@@ -224,6 +226,16 @@ if use_rnn:
     model = LSTMModel(num_classes=len(vocab_dict), vocab=vocab_torchtext, model_params=model_params)
 else:
     model = FlowLanguageModeling(model_params=model_params, vocab_size=len(vocab_dict), vocab=vocab_torchtext, dataset_class=dataset_class)
+
+if args.use_multi_gpu:
+    num_gpus = torch.cuda.device_count()
+    if num_gpus == 0:
+        print("[#] WARNING: Multi-GPU training failed because no GPU was detected. Continuing with single GPU...")
+    elif num_gpus == 1:
+        print("[#] WARNING: Multi-GPU training failed because only a single GPU is available. Continuing with single GPU...")
+    else:
+        print("Preparing to use %i GPUs..." % (num_gpus))
+        model = categorical_util.WrappedDataParallel(model)
 
 # print(model)
 model = model.to(device)
