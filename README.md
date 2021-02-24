@@ -1,4 +1,6 @@
 ## 研究方向
-- language_modeling
 - embedding_optimization
+- language_modeling
+- normalizing_flows
 - time_series
+- word_embeddings
