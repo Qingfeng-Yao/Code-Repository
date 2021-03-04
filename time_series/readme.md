@@ -3,6 +3,8 @@
 
 ## 参考代码
 - [zalandoresearch/pytorch-ts](https://github.com/zalandoresearch/pytorch-ts)
+- [awslabs/gluon-ts](https://github.com/awslabs/gluon-ts)
 
 ## 对应实现目录
 - TimeSeriesForecastingCNF
+- GluonTS
