@@ -5,9 +5,6 @@
 - dynamic_graph
     - text
         - DynamicGCN
-- embedding_optimization
-    - flows
-        - BilingualWE
 - graph_neural_network
 
 ```
