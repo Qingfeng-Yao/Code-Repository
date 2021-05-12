@@ -1,15 +1,11 @@
-## 研究方向及相关模型
-- anomaly_detection
-    - text
-        - CVDD
-- dynamic_graph
-    - text
-        - DynamicGCN
-    - social_networks
-        - TEDIC
-- graph_neural_network
-    - basics
-
-```
-Note: 上述模型或来自源代码复现，或来自封装好的教程例子；均会提供实现环境依赖(requirements.txt)和说明(readme.md)，说明包括程序运行、源码错误与解决、程序运行结果、重点代码逻辑等。此外还会涉及代码重构。
-```
+## 目录
+- leetcodes
+    - python基础
+    - python实现的常见leetcode题
+- pytorch
+    - pytorch基础
+    - pytorch实现的常见模型
+- tutorials
+    - pytorch实现的常见模型教程
+- papercodes
+    - 源代码复现，包括源码运行(错误与解决、运行结果)、重点代码逻辑以及代码重构

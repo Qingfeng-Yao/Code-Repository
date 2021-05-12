@@ -1,7 +1,7 @@
 ## 内容
 - pytorch_cookbook: pytorch基础
 - basic_models
-    - LR
+    - 线性回归
 
 ## 参考资料
 - [yunjey/pytorch-tutorial](https://github.com/yunjey/pytorch-tutorial)
