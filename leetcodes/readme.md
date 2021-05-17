@@ -27,3 +27,5 @@
 
 ## 参考资料
 - [CodeTop](https://codetop.cc/#/home)
+- [taizilongxu/interview_python](https://github.com/taizilongxu/interview_python)
+- [kenwoodjw/python_interview_question](https://github.com/kenwoodjw/python_interview_question)
