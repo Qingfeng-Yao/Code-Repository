@@ -28,6 +28,7 @@
 ## 参考资料
 - [CodeTop](https://codetop.cc/#/home)
 - [geekxh/hello-algorithm](https://github.com/geekxh/hello-algorithm)
+- [leetcode多种解法](https://leetcode.wang/)
 - [算法工程师面试题整理-数据结构与算法部分](https://github.com/PPshrimpGo/AIinterview)
 - [taizilongxu/interview_python](https://github.com/taizilongxu/interview_python)
 - [kenwoodjw/python_interview_question](https://github.com/kenwoodjw/python_interview_question)
