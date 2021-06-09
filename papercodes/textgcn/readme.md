@@ -13,7 +13,7 @@
 - 指标: Accuracy
 
 ## 数据集统计
-| Dataset | #Docs | #Training | #Real Training(90%) | #All Training(Nodes) | #Test | #Words | #Nodes | #Feature Dim | #Classes | Average Length | Min Length | Max Length | 
+| Dataset | #Docs | #Training | #Real Training(90%) | #All Training(Words) | #Test | #Words | #Nodes | #Feature Dim | #Classes | Average Length | Min Length | Max Length | 
 | :----: | :----: | :----: | :----: | :----: | :----: | :----: | :----: | :----: | :----: | :----: | :----: | :----: |
 | 20NG | 18846 | 11314 | 10183 | 54071 | 7532 | 42757 | 61603 | 300 | 20 | 221.26 | 14 | 35702 | 
 
