@@ -1,5 +1,5 @@
 ## 参考资料
-2020 | AAAI | Tensor Graph Convolutional Networks for Text Classification | Xien Liu et al.
+- 2020 | AAAI | Tensor Graph Convolutional Networks for Text Classification | Xien Liu et al.
 - [THUMLP/TensorGCN](https://github.com/THUMLP/TensorGCN)
 
 ## 源码运行

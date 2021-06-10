@@ -14,6 +14,7 @@
     - 生成对抗模型
 - gnn
 - flows
+- nlp
 
 ## Pipeline
 - 定义参数
@@ -40,3 +41,7 @@
 ## 参考资料
 - [yunjey/pytorch-tutorial](https://github.com/yunjey/pytorch-tutorial)
 - [Atcold/pytorch-Deep-Learning](https://github.com/Atcold/pytorch-Deep-Learning)
+- [lyhue1991/eat_pytorch_in_20_days](https://github.com/lyhue1991/eat_pytorch_in_20_days)
+- [pytorch/examples](https://github.com/pytorch/examples)
+- [rasbt/deeplearning-models](https://github.com/rasbt/deeplearning-models)
+- [ShusenTang/Dive-into-DL-PyTorch](https://github.com/ShusenTang/Dive-into-DL-PyTorch)
