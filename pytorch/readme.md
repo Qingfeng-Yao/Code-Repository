@@ -12,6 +12,8 @@
     - 语言模型
         - LSTM
     - 生成对抗模型
+- gnn
+- flows
 
 ## Pipeline
 - 定义参数
