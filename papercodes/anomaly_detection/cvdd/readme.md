@@ -2,7 +2,7 @@
 - 2019 | ACL | Self-Attentive, Multi-Context One-Class Classification for Unsupervised Anomaly Detection on Text | Lukas Ruff et al.
 - [lukasruff/CVDD-PyTorch](https://github.com/lukasruff/CVDD-PyTorch)
 
-# 源码运行
+## 源码运行
 - 环境配置: `python3.7`; `requirements.txt`
 	- 还需要下载`spaCy en`库: `python3 -m spacy download en`;该命令会出现错误`requests.exceptions.ConnectionError`，目前只能自己下载好en目录并放在`python3.7/site-packages/spacy/data`目录下
 - 命令运行: 先创建`data`目录，然后进入`src`目录
