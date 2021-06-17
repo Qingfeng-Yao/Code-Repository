@@ -13,7 +13,7 @@
 		- 运行`LSTM`模型时，将`time_dp_rate`改成`input_dp_rate`
 		- 运行`LSTM`模型时，出现问题`'TaskLanguageModeling' object has no attribute '_class_loss'`，改成`_calc_loss`
 		- 运行`LSTM`模型时，出现问题`AttributeError: 'Tensor' object has no attribute 'zeros_like'`，改成`torch.zeros_like`
-		- 目前bpd为负值
+		- 目前LSTM的bpd无法复现
 
 ## 数据集统计
 |  | PTB | Text8 |
@@ -26,5 +26,5 @@
 ## 运行结果
 |  | PTB | Text8 |
 | :----: | :----: | :----: |
-| LSTM | - | 
+| LSTM | - | - | 
 | CNF | 1.26bpd | 1.45bpd |  
