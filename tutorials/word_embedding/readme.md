@@ -1,2 +1,2 @@
 ## 主要内容
-- basis.ipynb: fasttext
+- basis.ipynb: word2vec, fasttext
