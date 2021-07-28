@@ -1,6 +1,8 @@
 ## 张量
 - AttributeError: 'Tensor' object has no attribute 'T'
     - 改成.t()
+- 函数中的维度索引
+    - 维度索引值的轴从零开始；如果您指定轴是负数，则从最后向后进行计数，也就是倒数
 
 ## cuda
 - 运行到model.cuda()卡死

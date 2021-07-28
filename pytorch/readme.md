@@ -1,5 +1,6 @@
 ## 内容
 - pytorch_cookbook: pytorch基础
+- tf_cookbook: tensorflow1.0基础
 - basic_models
     - 线性回归
     - 逻辑回归
@@ -16,8 +17,9 @@
 - gnn
 - flows
 - nlp
+- recommendation system
 
-## Pipeline
+## Pipeline(pytorch)
 - 定义参数
     - 设置设备(模型和数据)
     - 输入输出大小、隐含大小、批大小
