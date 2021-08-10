@@ -1,0 +1,7 @@
+- 对于 tensorflow 1.15 及更早版本，CPU 和 GPU 软件包是分开的
+    - pip install tensorflow==1.15      # CPU
+    - pip install tensorflow-gpu==1.15  # GPU
+- Could not load dynamic library 'libcudart.so.10.0'; dlerror: libcudart.so.10.0: cannot open shared object file: No such file or directory
+    - tensorflow支持CUDA10.0，还不支持CUDA10.1，而我安装的是CUDA10.1，现在需要安装一个CUDA10.0；可直接用conda安装cudatoolkit，即conda install cudatoolkit=10.0
+- Could not load dynamic library 'libcudnn.so.7'; dlerror: libcudnn.so.7: cannot open shared object file: No such file or directory
+    - 解决办法是安装cudann，即conda install cudnn -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/linux-64/
