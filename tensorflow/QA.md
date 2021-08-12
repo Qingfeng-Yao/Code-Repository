@@ -8,3 +8,6 @@
     - 解决办法是安装cudann，即conda install cudnn -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/linux-64/
 - from tensorflow.python.ops import rnn_cell_impl报错: module 'tensorflow.python.ops.rnn_cell_impl' has no attribute '_like_rnncell'
     - 在tensorflow1.4下没问题
+- 指定使用的GPU
+    - 代码中指定: import os;os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    - 命令行指定: CUDA_VISIBLE_DEVICES=1 python3 your_file.py
