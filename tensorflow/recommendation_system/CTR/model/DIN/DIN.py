@@ -44,32 +44,37 @@ def attention(queries, keys, keys_id, params):
 
 @tf_estimator_model
 def model_fn_varlen(features, labels, mode, params):
+    # print("features: {}".format(features))
     f_dense = build_features()
-    f_dense = tf.feature_column.input_layer(features, f_dense)
+    f_dense = tf.compat.v1.feature_column.input_layer(features, f_dense)
+    # print(f_dense.get_shape().as_list()) # [None, 129]
 
     # Embedding Look up: history list item and category list
-    item_embedding = tf.get_variable(shape = [params['amazon_item_count'], params['amazon_emb_dim']],
+    item_embedding = tf.compat.v1.get_variable(shape = [params['amazon_item_count'], params['amazon_emb_dim']],
                                      initializer = tf.truncated_normal_initializer(),
-                                     name ='item_embedding')
-    cate_embedding = tf.get_variable(shape = [params['amazon_cate_count'], params['amazon_emb_dim']],
+                                     name = 'item_embedding')
+    cate_embedding = tf.compat.v1.get_variable(shape = [params['amazon_cate_count'], params['amazon_emb_dim']],
                                      initializer = tf.truncated_normal_initializer(),
                                      name = 'cate_embedding')
 
-    with tf.variable_scope('Attention_Layer'):
-        with tf.variable_scope('item_attention'):
+    with tf.compat.v1.variable_scope('Attention_Layer'):
+        with tf.compat.v1.variable_scope('item_attention'):
             item_hist_emb = tf.nn.embedding_lookup( item_embedding,
                                                     features['hist_item_list'] )  # batch * padded_size * emb_dim
+            # print(item_hist_emb.get_shape().as_list()) # [None, None, 64]
             item_emb = tf.nn.embedding_lookup( item_embedding, features['item'] )  # batch * emb_dim
+            # print(item_emb.get_shape().as_list()) # [None, 64]
             item_att_emb = attention(item_emb, item_hist_emb, features['hist_item_list'], params) # batch * emb_dim
+            # print(item_att_emb.get_shape().as_list()) # [None, 64]
 
-        with tf.variable_scope('category_attention'):
+        with tf.compat.v1.variable_scope('category_attention'):
             cate_hist_emb = tf.nn.embedding_lookup( cate_embedding,
                                                     features['hist_category_list'] )  # batch * padded_size * emb_dim
             cate_emb = tf.nn.embedding_lookup( cate_embedding, features['item_category'] )  # batch * emd_dim
             cate_att_emb = attention(cate_emb, cate_hist_emb, features['hist_category_list'], params) # batch * emb_dim
 
     # Concat attention embedding and all other features
-    with tf.variable_scope('Concat_Layer'):
+    with tf.compat.v1.variable_scope('Concat_Layer'):
         fc = tf.concat([item_att_emb, cate_att_emb, item_emb, cate_emb, f_dense],  axis=1 )
         add_layer_summary('fc_concat', fc)
 
@@ -78,7 +83,7 @@ def model_fn_varlen(features, labels, mode, params):
                               params['dropout_rate'], params['batch_norm'],
                               mode, add_summary = True)
 
-    with tf.variable_scope('output'):
+    with tf.compat.v1.variable_scope('output'):
         y = tf.layers.dense(dense, units =1)
         add_layer_summary( 'output', y )
 

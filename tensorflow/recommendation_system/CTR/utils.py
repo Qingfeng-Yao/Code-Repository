@@ -29,10 +29,10 @@ def parse_example_helper_libsvm(line):
 
 
 def parse_example_helper_tfreocrd(line):
-    features = tf.parse_single_example(line, features = AMAZON_PROTO)
+    features = tf.io.parse_single_example(line, features = AMAZON_PROTO)
 
     for i in AMAZON_VARLEN:
-        features[i] = tf.sparse_tensor_to_dense(features[i])
+        features[i] = tf.sparse.to_dense(features[i])
 
     target = tf.reshape(tf.cast( features.pop( AMAZON_TARGET ), tf.float32),[-1])
 
@@ -76,8 +76,8 @@ def input_fn(step, is_predict, config):
 
 
 def add_layer_summary(tag, value):
-  tf.summary.scalar('{}/fraction_of_zero_values'.format(tag), tf.math.zero_fraction(value))
-  tf.summary.histogram('{}/activation'.format(tag), value)
+  tf.compat.v1.summary.scalar('{}/fraction_of_zero_values'.format(tag), tf.math.zero_fraction(value))
+  tf.compat.v1.summary.histogram('{}/activation'.format(tag), value)
 
 
 def tf_estimator_model(model_fn):
@@ -97,19 +97,19 @@ def tf_estimator_model(model_fn):
         cross_entropy = tf.reduce_mean( tf.nn.sigmoid_cross_entropy_with_logits( labels=labels, logits=y ) )
 
         if mode == tf.estimator.ModeKeys.TRAIN:
-            optimizer = tf.train.AdagradOptimizer( learning_rate=params['learning_rate'] )
-            update_ops = tf.get_collection( tf.GraphKeys.UPDATE_OPS )
+            optimizer = tf.compat.v1.train.AdagradOptimizer( learning_rate=params['learning_rate'] )
+            update_ops = tf.compat.v1.get_collection( tf.compat.v1.GraphKeys.UPDATE_OPS )
             with tf.control_dependencies( update_ops ):
                 train_op = optimizer.minimize( cross_entropy,
-                                               global_step=tf.train.get_global_step() )
+                                               global_step=tf.compat.v1.train.get_global_step() )
             return tf.estimator.EstimatorSpec( mode, loss=cross_entropy, train_op=train_op )
         else:
             eval_metric_ops = {
-                'accuracy': tf.metrics.accuracy( labels=labels,
+                'accuracy': tf.compat.metrics.accuracy( labels=labels,
                                                  predictions=tf.to_float(tf.greater_equal(tf.sigmoid(y),0.5))  ),
-                'auc': tf.metrics.auc( labels=labels,
+                'auc': tf.compat.metrics.auc( labels=labels,
                                        predictions=tf.sigmoid( y )),
-                'pr': tf.metrics.auc( labels=labels,
+                'pr': tf.compat.metrics.auc( labels=labels,
                                       predictions=tf.sigmoid( y ),
                                       curve='PR' )
             }

@@ -36,7 +36,7 @@ def sparse_linear(feature_size, feat_ids, feat_vals, add_summary):
 
 
 def stack_dense_layer(dense, hidden_units, dropout_rate, batch_norm, mode, add_summary):
-    with tf.variable_scope('Dense'):
+    with tf.compat.v1.variable_scope('Dense'):
         for i, unit in enumerate(hidden_units):
             dense = tf.layers.dense(dense, units = unit, activation = 'relu',
                                     name = 'dense{}'.format(i))

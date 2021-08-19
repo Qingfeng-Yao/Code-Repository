@@ -3,13 +3,13 @@ import pickle
 
 
 AMAZON_PROTO = {
-    'reviewer_id': tf.FixedLenFeature( [], tf.int64 ),
-    'hist_item_list': tf.VarLenFeature( tf.int64 ),
-    'hist_category_list': tf.VarLenFeature(tf.int64),
-    'hist_length': tf.FixedLenFeature([], tf.int64),
-    'item': tf.FixedLenFeature( [], tf.int64 ),
-    'item_category': tf.FixedLenFeature([], tf.int64),
-    'target': tf.FixedLenFeature( [], tf.int64 )
+    'reviewer_id': tf.io.FixedLenFeature( [], tf.int64 ),
+    'hist_item_list': tf.io.VarLenFeature( tf.int64 ),
+    'hist_category_list': tf.io.VarLenFeature(tf.int64),
+    'hist_length': tf.io.FixedLenFeature([], tf.int64),
+    'item': tf.io.FixedLenFeature( [], tf.int64 ),
+    'item_category': tf.io.FixedLenFeature([], tf.int64),
+    'target': tf.io.FixedLenFeature( [], tf.int64 )
 }
 
 AMAZON_TARGET = 'target'

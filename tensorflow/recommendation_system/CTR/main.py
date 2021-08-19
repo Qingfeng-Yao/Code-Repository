@@ -42,7 +42,6 @@ def main(args):
         eval_spec = tf.estimator.EvalSpec(input_fn = input_fn(step ='valid',
                                            is_predict = 1,
                                            config = config),
-                                           steps = 200,
                                            throttle_secs = 60)
 
         tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
