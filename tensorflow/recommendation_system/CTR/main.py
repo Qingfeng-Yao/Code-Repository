@@ -2,6 +2,7 @@ import argparse
 import importlib
 import shutil
 import pandas as pd
+import os
 
 from config import CONFIG
 from utils import *
@@ -42,6 +43,7 @@ def main(args):
         eval_spec = tf.estimator.EvalSpec(input_fn = input_fn(step ='valid',
                                            is_predict = 1,
                                            config = config),
+                                           steps = 200,
                                            throttle_secs = 60)
 
         tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
@@ -58,10 +60,13 @@ def main(args):
 if __name__ =='__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type = str, help = 'which model to use: DIN', default='DIN')
+    parser.add_argument('--model', type = str, help = 'which model to use: DIN | MMOE | MMOEBIAS', default='DIN')
     parser.add_argument('--step', type = str, help = 'Train or Predict', default='train')
     parser.add_argument('--clear_model', type=int, help= 'Whether to clear existing model', default=1)
     parser.add_argument('--dataset', type=str, help= 'which dataset to use: amazon', default='amazon')
+    parser.add_argument('--cuda', type=str, help= 'which gpu to use', default='0')
     args = parser.parse_args()
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.cuda
 
     main(args)

@@ -52,3 +52,24 @@ def stack_dense_layer(dense, hidden_units, dropout_rate, batch_norm, mode, add_s
                 add_layer_summary(dense.name, dense)
 
     return dense
+
+def mmoe_layer(dense, hidden_units, dropout_rate, batch_norm, mode, add_summary):
+    with tf.compat.v1.variable_scope('Mmoe'):
+        num_of_expert = 2
+        outputs = []
+        for n in range(num_of_expert):
+            with tf.compat.v1.variable_scope('Expert_{}'.format(n)):
+                out = stack_dense_layer(dense, hidden_units, dropout_rate, batch_norm, mode, add_summary)
+                outputs.append(out)
+            
+        with tf.compat.v1.variable_scope('Gate'):
+            out = stack_dense_layer(dense, hidden_units, dropout_rate, batch_norm, mode, add_summary)
+            y = tf.layers.dense(out, units =1, name = 'out')
+            
+        gate_weights = tf.nn.softmax(y, dim=1)
+
+        expert_output = tf.reduce_sum(tf.multiply(tf.expand_dims(gate_weights, -1), tf.stack(values=outputs, axis=1)), axis=1)
+        with tf.compat.v1.variable_scope('CTR_Task'):
+            expert_output = stack_dense_layer(expert_output, hidden_units, dropout_rate, batch_norm, mode, add_summary)
+        
+    return expert_output

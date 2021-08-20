@@ -15,7 +15,8 @@ class CONFIG:
     DATA_MAP = {
         'census': '{}.csv',
         'frappe': 'frappe.{}.libfm',
-        'amazon': 'amazon_{}.tfrecords'
+        # 'amazon': 'amazon_{}.tfrecords'
+        'amazon': 'amazon_{}_small.tfrecords'
     }
 
     PARSER_MAP = {

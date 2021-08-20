@@ -29,4 +29,7 @@
     - 模型训练: 分别定义tf.estimator.TrainSpec和tf.estimator.EvalSpec，然后和模型一起传入到tf.estimator.train_and_evaluate中
     - 模型预测: 调用estimator.predict方法
     - 具体模型(指标AUC, global step)
-        - DIN: 0.6851(85400) | 0.6855(83050)  评估(200step)
+        - DIN: 0.6851(85400)   评估(200step)
+        - DIN: 0.6823(79700)   评估(100step/全数据集)
+        - DIN: 0.7242(83100)   训练(小数据集)
+        - MMOE: 0.7312(80050)

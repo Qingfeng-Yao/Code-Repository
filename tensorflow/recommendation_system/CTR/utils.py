@@ -105,11 +105,11 @@ def tf_estimator_model(model_fn):
             return tf.estimator.EstimatorSpec( mode, loss=cross_entropy, train_op=train_op )
         else:
             eval_metric_ops = {
-                'accuracy': tf.compat.metrics.accuracy( labels=labels,
+                'accuracy': tf.compat.v1.metrics.accuracy( labels=labels,
                                                  predictions=tf.to_float(tf.greater_equal(tf.sigmoid(y),0.5))  ),
-                'auc': tf.compat.metrics.auc( labels=labels,
+                'auc': tf.compat.v1.metrics.auc( labels=labels,
                                        predictions=tf.sigmoid( y )),
-                'pr': tf.compat.metrics.auc( labels=labels,
+                'pr': tf.compat.v1.metrics.auc( labels=labels,
                                       predictions=tf.sigmoid( y ),
                                       curve='PR' )
             }
