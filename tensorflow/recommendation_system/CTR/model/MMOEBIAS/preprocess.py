@@ -14,6 +14,7 @@ def build_features():
     f_item_length = tf.feature_column.numeric_column('hist_length')
 
     f_dense = [f_item_length, f_reviewer]
+    f_user = [f_reviewer]
 
-    return f_dense
+    return f_dense, f_user
 
