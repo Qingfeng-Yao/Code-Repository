@@ -7,9 +7,9 @@
 import tensorflow as tf
 
 from const import *
-from model.MMOE.preprocess import build_features
+from model.STAR.preprocess import build_features
 from utils import build_estimator_helper, tf_estimator_model, add_layer_summary
-from layers import mmoe_layer
+from layers import stack_dense_layer, mmoe_layer
 
 def attention(queries, keys, keys_id, params):
     """
@@ -42,8 +42,9 @@ def attention(queries, keys, keys_id, params):
 
 @tf_estimator_model
 def model_fn_varlen(features, labels, mode, params):
-    f_dense = build_features()
+    f_dense, f_user_group = build_features()
     f_dense = tf.compat.v1.feature_column.input_layer(features, f_dense)
+    f_user_group = tf.compat.v1.feature_column.input_layer(features, f_user_group)
 
     # Embedding Look up: history list item and category list
     item_embedding = tf.compat.v1.get_variable(shape = [params['amazon_item_count'], params['amazon_emb_dim']],
@@ -68,19 +69,39 @@ def model_fn_varlen(features, labels, mode, params):
 
     # Concat attention embedding and all other features
     with tf.compat.v1.variable_scope('Concat_Layer'):
-        fc = tf.concat([item_att_emb, cate_att_emb, item_emb, cate_emb, f_dense],  axis=1 )
-        add_layer_summary('fc_concat', fc)
+        fc = tf.concat([item_att_emb, cate_att_emb, item_emb, cate_emb, f_dense], axis=1)
+        fc_auxiliary = tf.concat([item_att_emb, cate_att_emb, item_emb, cate_emb, f_dense, f_user_group], axis=1)
+
 
     # whatever model you want after fc: here for simplicity use only MLP, you can try DCN/DeepFM
     dense = mmoe_layer(fc, params['hidden_units'],
                               params['dropout_rate'], params['batch_norm'],
                               mode, add_summary = True)
 
-    with tf.compat.v1.variable_scope('output'):
-        y = tf.layers.dense(dense, units =1)
-        add_layer_summary( 'output', y )
+    with tf.compat.v1.variable_scope('Bias_Layer'):
+        bias = stack_dense_layer(fc, params['hidden_units'],
+                                params['dropout_rate'], params['batch_norm'],
+                                mode, add_summary = True)
 
-    return y
+    with tf.compat.v1.variable_scope('Auxiliary_Layer'):
+        auxiliary = stack_dense_layer(fc_auxiliary, params['hidden_units'],
+                                params['dropout_rate'], params['batch_norm'],
+                                mode, add_summary = True)
+    
+
+    with tf.compat.v1.variable_scope('main_output'):
+        main_y = tf.layers.dense(dense, units =1)
+        add_layer_summary( 'main_output', main_y )
+
+    with tf.compat.v1.variable_scope('bias_output'):
+        bias_y = tf.layers.dense(bias, units =1)
+        add_layer_summary( 'bias_output', bias_y )
+
+    with tf.compat.v1.variable_scope('auxiliary_output'):
+        auxiliary_y = tf.layers.dense(auxiliary, units =1)
+        add_layer_summary( 'auxiliary_output', auxiliary_y )
+
+    return main_y+bias_y+auxiliary_y
 
 
 build_estimator = build_estimator_helper(
@@ -96,7 +117,7 @@ build_estimator = build_estimator_helper(
                    'amazon_item_count': AMAZON_ITEM_COUNT,
                    'amazon_cate_count': AMAZON_CATE_COUNT,
                    'amazon_emb_dim': AMAZON_EMB_DIM,
-                   'model_name': 'mmoe'
+                   'model_name': 'star'
             }
     }
 )

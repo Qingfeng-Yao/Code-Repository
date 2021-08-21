@@ -9,7 +9,8 @@ AMAZON_PROTO = {
     'hist_length': tf.io.FixedLenFeature([], tf.int64),
     'item': tf.io.FixedLenFeature( [], tf.int64 ),
     'item_category': tf.io.FixedLenFeature([], tf.int64),
-    'target': tf.io.FixedLenFeature( [], tf.int64 )
+    'target': tf.io.FixedLenFeature( [], tf.int64 ),
+    'reviewer_group': tf.io.FixedLenFeature( [], tf.int64 )
 }
 
 AMAZON_TARGET = 'target'

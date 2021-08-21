@@ -13,27 +13,20 @@ class CONFIG:
     CHECKPOINT_DIR = './{}_checkpoint/{}'
 
     DATA_MAP = {
-        'census': '{}.csv',
-        'frappe': 'frappe.{}.libfm',
         # 'amazon': 'amazon_{}.tfrecords'
-        'amazon': 'amazon_{}_small.tfrecords'
+        # 'amazon': 'amazon_{}_small.tfrecords'
+        'amazon': 'amazon_{}_small_group.tfrecords'
     }
 
     PARSER_MAP = {
-        'census': 'csv',
-        'frappe': 'libsvm',
         'amazon': 'tfrecord'
     }
 
     TYPE_MAP = {
-        'census': 'dense',
-        'frappe': 'sparse',
         'amazon': 'varlen-sparse'
     }
 
     PADDED_SHAPE = {
-        'census': None,
-        'frappe': None,
         'amazon': ({
                 'reviewer_id': [],
                 'hist_item_list': [None],
@@ -41,6 +34,7 @@ class CONFIG:
                 'hist_length': [],
                 'item': [],
                 'item_category':[],
+                'reviewer_group': []
         },[1])
     }
 

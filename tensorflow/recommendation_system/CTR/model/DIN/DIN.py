@@ -102,7 +102,8 @@ build_estimator = build_estimator_helper(
                    'attention_hidden_units':[80,40],
                    'amazon_item_count': AMAZON_ITEM_COUNT,
                    'amazon_cate_count': AMAZON_CATE_COUNT,
-                   'amazon_emb_dim': AMAZON_EMB_DIM
+                   'amazon_emb_dim': AMAZON_EMB_DIM,
+                   'model_name': 'din'
             }
     }
 )
