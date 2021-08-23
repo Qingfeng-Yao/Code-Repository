@@ -34,6 +34,33 @@ def sparse_linear(feature_size, feat_ids, feat_vals, add_summary):
 
     return linear_output
 
+def attention(queries, keys, keys_id, params, is_ta=True):
+    """
+    :param queries: target embedding (batch_size * emb_dim)
+    :param keys: history embedding (batch * padded_size * emb_dim)
+    :param keys_id: history id (batch * padded_size)
+    :return: attention_emb: weighted average of history embedding (batch * emb_dim)
+    """
+    # Differ from paper, for computation efficiency: outer product -> hadamard product
+    padded_size = tf.shape(keys)[1]
+    if is_ta:
+        queries = tf.tile(tf.expand_dims(queries, axis=1), [1, padded_size, 1]) # batch * emb_dim -> batch * padded_size * emb_dim
+    dense = tf.concat([keys, queries, queries - keys, queries * keys], axis =2 ) # batch * padded_size * emb_dim
+
+    for i, unit in enumerate(params['attention_hidden_units']):
+        dense = tf.layers.dense(dense, units= unit, activation = tf.nn.relu, name = 'attention_{}'.format(i))
+    weight = tf.layers.dense(dense, units=1, activation=tf.sigmoid, name ='attention_weight') # batch * padded_size * 1
+
+    zero_mask = tf.expand_dims(tf.not_equal( keys_id, 0 ), axis=2)  # batch * padded_size * 1
+    zero_weight = tf.ones_like(weight) * (-2 ** 32 + 1) # small number logits ~ 0
+    weight = tf.where(zero_mask, weight, zero_weight) # apply zero-mask for padded keys
+
+    weight = tf.nn.softmax(weight) # rescale weight to sum(weight)=1
+
+    attention_emb = tf.reduce_mean(tf.multiply(weight, keys), axis=1) # weight average ->batch * emb_dim
+
+    return attention_emb
+
 
 def stack_dense_layer(dense, hidden_units, dropout_rate, batch_norm, mode, add_summary):
     with tf.compat.v1.variable_scope('Dense'):
@@ -74,11 +101,13 @@ def mmoe_layer(dense, hidden_units, dropout_rate, batch_norm, mode, add_summary)
         
     return expert_output
 
-def ubc_layer(features, params, embtb, attemb, name):
+def ubc_layer(features, params, embtb, name):
     hist_name = 'hist_{}_list'.format(name)
     with tf.compat.v1.variable_scope('UBC_Layer'):
         with tf.compat.v1.variable_scope(name):
             hist_emb = tf.nn.embedding_lookup(embtb, features[hist_name])  # batch * padded_size * emb_dim
+
+            # direct mean pooling 
             seq_2d = tf.reshape(hist_emb, [-1, tf.shape(hist_emb)[2]])
             sequence_mask = tf.not_equal(features[hist_name], 0)
             seq_vec = tf.reshape(tf.where(tf.reshape(sequence_mask, [-1]),
@@ -92,6 +121,9 @@ def ubc_layer(features, params, embtb, attemb, name):
             seq_vec_mean = tf.multiply(tf.reduce_sum(seq_vec, axis=1),
                                                tf.pow(seq_length_tile, -1))
 
+            # self atten
+            seq_self_emb = attention(hist_emb, hist_emb, features[hist_name], params, False)
+
             seq_group_embedding_table = tf.compat.v1.get_variable(
                         name="{}_group_embedding".format(name),
                         shape=[params['num_user_group'], params['amazon_emb_dim']],
@@ -104,9 +136,15 @@ def ubc_layer(features, params, embtb, attemb, name):
             ubc_out = tf.layers.dense(ubc_hidden_group_weight, units = params['amazon_emb_dim'], activation = tf.nn.relu, name ='ubc_out')
 
             loss_sim = tf.maximum(1 - tf.reduce_mean(tf.reduce_sum(
-                        tf.multiply(tf.nn.l2_normalize(ubc_out, dim=1), tf.nn.l2_normalize(attemb, dim=1)),
+                        tf.multiply(tf.nn.l2_normalize(ubc_out, dim=1), tf.nn.l2_normalize(seq_self_emb, dim=1)),
                         axis=-1)), 0)
             tf.add_to_collection('all_loss_sim', loss_sim)
+
+            importance = tf.reduce_sum(ubc_hidden, axis=0)
+            eps = 1e-10
+            mean, variance  = tf.nn.moments(importance, axes=0)
+            loss_balance = variance / (mean**2 + eps)
+            tf.add_to_collection('all_loss_balance', loss_balance)
 
     return seq_group_embedding
 

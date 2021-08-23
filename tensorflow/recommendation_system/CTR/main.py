@@ -60,9 +60,9 @@ def main(args):
 if __name__ =='__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type = str, help = 'which model to use: DIN | MMOE | MMOEBIAS | UBC', default='DIN')
+    parser.add_argument('--model', type = str, help = 'which model to use: DIN | MMOE | MMOEBIAS | UBC | STAR', default='DIN')
     parser.add_argument('--clear_model', type=int, help= 'Whether to clear existing model', default=1)
-    parser.add_argument('--cuda', type=str, help= 'which gpu to use', default='0')
+    parser.add_argument('--cuda', type=str, help= 'which gpu to use', default='1')
     
     parser.add_argument('--step', type = str, help = 'Train or Predict', default='train')
     parser.add_argument('--dataset', type=str, help= 'which dataset to use: amazon', default='amazon')
