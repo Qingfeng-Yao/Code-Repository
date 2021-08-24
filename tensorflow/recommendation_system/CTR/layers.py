@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.contrib import layers
 from utils import add_layer_summary
 
 def sparse_embedding(feature_size, embedding_size, field_size, feat_ids, feat_vals, add_summary):
@@ -34,32 +35,73 @@ def sparse_linear(feature_size, feat_ids, feat_vals, add_summary):
 
     return linear_output
 
-def attention(queries, keys, keys_id, params, is_ta=True):
-    """
-    :param queries: target embedding (batch_size * emb_dim)
-    :param keys: history embedding (batch * padded_size * emb_dim)
-    :param keys_id: history id (batch * padded_size)
-    :return: attention_emb: weighted average of history embedding (batch * emb_dim)
-    """
-    # Differ from paper, for computation efficiency: outer product -> hadamard product
-    padded_size = tf.shape(keys)[1]
-    if is_ta:
-        queries = tf.tile(tf.expand_dims(queries, axis=1), [1, padded_size, 1]) # batch * emb_dim -> batch * padded_size * emb_dim
-    dense = tf.concat([keys, queries, queries - keys, queries * keys], axis =2 ) # batch * padded_size * emb_dim
+def attention(queries, keys, params, keys_id=None, queries_id=None, num_heads=1, atten_mode='ln'):
 
-    for i, unit in enumerate(params['attention_hidden_units']):
-        dense = tf.layers.dense(dense, units= unit, activation = tf.nn.relu, name = 'attention_{}'.format(i))
-    weight = tf.layers.dense(dense, units=1, activation=tf.sigmoid, name ='attention_weight') # batch * padded_size * 1
+    query_len = tf.shape(queries)[1]  
+    key_len = tf.shape(keys)[1] 
 
-    zero_mask = tf.expand_dims(tf.not_equal( keys_id, 0 ), axis=2)  # batch * padded_size * 1
-    zero_weight = tf.ones_like(weight) * (-2 ** 32 + 1) # small number logits ~ 0
-    weight = tf.where(zero_mask, weight, zero_weight) # apply zero-mask for padded keys
+    queries_2d = tf.reshape(queries, [-1, queries.get_shape().as_list()[-1]])
+    keys_2d = tf.reshape(keys, [-1, keys.get_shape().as_list()[-1]])
+    Q = tf.layers.dense(queries_2d, params['attention_hidden_units'], activation = tf.nn.relu, name = 'attention_Q')  
+    Q = tf.reshape(Q, [-1, tf.shape(queries)[1], Q.get_shape().as_list()[-1]])
+    K = tf.layers.dense(keys_2d, params['attention_hidden_units'], activation = tf.nn.relu, name = 'attention_K')  
+    K = tf.reshape(K, [-1, tf.shape(keys)[1], K.get_shape().as_list()[-1]])
+    V = tf.layers.dense(keys_2d, params['amazon_emb_dim'], activation = tf.nn.relu, name = 'attention_V')  
+    V = tf.reshape(V, [-1, tf.shape(keys)[1], V.get_shape().as_list()[-1]])
 
-    weight = tf.nn.softmax(weight) # rescale weight to sum(weight)=1
+    if num_heads > 1:
+        Q_ = tf.concat(tf.split(Q, num_heads, axis=2), axis=0)  
+        K_ = tf.concat(tf.split(K, num_heads, axis=2), axis=0) 
+        V_ = tf.concat(tf.split(V, num_heads, axis=2), axis=0)
+    else:
+        Q_ = Q
+        K_ = K
+        V_ = V
+    if atten_mode == 'ln':
+        # Layer Norm
+        Q_ = layers.layer_norm(Q_, begin_norm_axis=-1, begin_params_axis=-1)
+        K_ = layers.layer_norm(K_, begin_norm_axis=-1, begin_params_axis=-1)
+        # Multiplication
+        outputs = tf.matmul(Q_, K_, transpose_b=True)  
+        # Scale
+        outputs = outputs * (K_.get_shape().as_list()[-1] ** (-0.5))
+    elif atten_mode == 'din':
+        din_all = tf.concat([Q_, K_, Q_ - K_, Q_ * K_], axis=-1)
+        d_layer_1_all = layers.fully_connected(din_all, 80, activation_fn=tf.sigmoid, scope='f1_att')
+        d_layer_2_all = layers.fully_connected(d_layer_1_all, 40, activation_fn=tf.sigmoid, scope='f2_att')
+        d_layer_3_all = layers.fully_connected(d_layer_2_all, 1, activation_fn=None, scope='f3_att')
+        outputs = tf.reshape(d_layer_3_all, [-1, query_len, key_len])
 
-    attention_emb = tf.reduce_mean(tf.multiply(weight, keys), axis=1) # weight average ->batch * emb_dim
 
-    return attention_emb
+    # key Masking
+    key_masks = tf.not_equal( keys_id, 0 )
+    key_masks = tf.tile(tf.reshape(key_masks, [-1, 1, key_len]), [num_heads, query_len, 1])
+    paddings = tf.fill(tf.shape(outputs), tf.constant(-2 ** 32 + 1, dtype=tf.float32))
+    outputs = tf.where(key_masks, outputs, paddings)
+
+    # Activation
+    outputs = tf.nn.softmax(outputs)
+    
+    if queries_id is not None:
+        # Query Masking
+        query_masks = tf.not_equal( queries_id, 0 )
+        query_masks = tf.tile(tf.reshape(query_masks, [-1, query_len]), [num_heads, 1])  
+        outputs = tf.reshape(outputs, [-1, key_len])  
+        paddings = tf.zeros_like(outputs, dtype=tf.float32)  
+        outputs = tf.where(tf.reshape(query_masks, [-1]), outputs, paddings)  
+        outputs = tf.reshape(outputs, [-1, query_len, key_len])  
+
+    # Attention vector
+    att_vec = outputs
+
+    # Weighted sum
+    outputs = tf.matmul(outputs, V_) 
+
+    # Restore shape
+    if num_heads > 1:
+        outputs = tf.concat(tf.split(outputs, num_heads, axis=0), axis=2)
+
+    return outputs, att_vec
 
 
 def stack_dense_layer(dense, hidden_units, dropout_rate, batch_norm, mode, add_summary):
@@ -122,7 +164,13 @@ def ubc_layer(features, params, embtb, name):
                                                tf.pow(seq_length_tile, -1))
 
             # self atten
-            seq_self_emb = attention(hist_emb, hist_emb, features[hist_name], params, False)
+            seq_att_3d, _ = attention(hist_emb, hist_emb, params, features[hist_name], features[hist_name])
+            seq_2d_att = tf.reshape(seq_att_3d, [-1, tf.shape(seq_att_3d)[2]])  
+            seq_vec_att = tf.reshape(tf.where(tf.reshape(sequence_mask, [-1]),
+                                                seq_2d_att, tf.zeros_like(seq_2d_att)),
+                                        tf.shape(seq_att_3d)) 
+            seq_vec_mean_att = tf.multiply(tf.reduce_sum(seq_vec_att, axis=1),
+                                                   tf.pow(seq_length_tile, -1))
 
             seq_group_embedding_table = tf.compat.v1.get_variable(
                         name="{}_group_embedding".format(name),
@@ -133,10 +181,10 @@ def ubc_layer(features, params, embtb, name):
             index_ids = tf.argmax(ubc_hidden, axis=-1)
             seq_group_embedding = tf.nn.embedding_lookup(seq_group_embedding_table, index_ids)
             ubc_hidden_group_weight = tf.matmul(ubc_hidden, seq_group_embedding_table)
-            ubc_out = tf.layers.dense(ubc_hidden_group_weight, units = params['amazon_emb_dim'], activation = tf.nn.relu, name ='ubc_out')
+            ubc_out = tf.layers.dense(ubc_hidden_group_weight, units = params['amazon_emb_dim'], activation = tf.nn.sigmoid, name ='ubc_out')
 
             loss_sim = tf.maximum(1 - tf.reduce_mean(tf.reduce_sum(
-                        tf.multiply(tf.nn.l2_normalize(ubc_out, dim=1), tf.nn.l2_normalize(seq_self_emb, dim=1)),
+                        tf.multiply(tf.nn.l2_normalize(ubc_out, dim=1), tf.nn.l2_normalize(seq_vec_mean_att, dim=1)),
                         axis=-1)), 0)
             tf.add_to_collection('all_loss_sim', loss_sim)
 
@@ -146,7 +194,7 @@ def ubc_layer(features, params, embtb, name):
             loss_balance = variance / (mean**2 + eps)
             tf.add_to_collection('all_loss_balance', loss_balance)
 
-    return seq_group_embedding
+    return seq_group_embedding, seq_vec_mean_att
 
 def att_weight_layer(att_emb, ubc_emb, query, name):
     with tf.compat.v1.variable_scope(name):

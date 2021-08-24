@@ -97,7 +97,8 @@ def tf_estimator_model(model_fn):
         cross_entropy = tf.reduce_mean( tf.nn.sigmoid_cross_entropy_with_logits( labels=labels, logits=y ) )
         if params['model_name'] == 'ubc':
             print("ubc loss!")
-            cross_entropy += (tf.reduce_sum(tf.compat.v1.get_collection('all_loss_sim'))+tf.reduce_sum(tf.compat.v1.get_collection('all_loss_balance')))
+            # cross_entropy += (tf.reduce_sum(tf.compat.v1.get_collection('all_loss_sim'))+tf.reduce_sum(tf.compat.v1.get_collection('all_loss_balance')))
+            cross_entropy += 2*tf.reduce_sum(tf.compat.v1.get_collection('all_loss_sim'))
 
         if mode == tf.estimator.ModeKeys.TRAIN:
             optimizer = tf.compat.v1.train.AdagradOptimizer( learning_rate=params['learning_rate'] )

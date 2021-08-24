@@ -11,3 +11,5 @@
 - 指定使用的GPU
     - 代码中指定: import os;os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     - 命令行指定: CUDA_VISIBLE_DEVICES=1 python3 your_file.py
+- tf.reshape(x,[])遇到问题`TypeError: Failed to convert object of type <class 'list'> to Tensor. Contents: [-1, None, 80]. Consider casting elements to a supported type.`
+    - 可能原因在于出现None，即序列维度，这个数值可通过tf.shape来获取

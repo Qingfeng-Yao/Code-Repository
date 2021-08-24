@@ -31,25 +31,29 @@ def model_fn_varlen(features, labels, mode, params):
             item_hist_emb = tf.nn.embedding_lookup( item_embedding,
                                                     features['hist_item_list'] )  # batch * padded_size * emb_dim
             item_emb = tf.nn.embedding_lookup( item_embedding, features['item'] )  # batch * emb_dim
-            item_att_emb = attention(item_emb, item_hist_emb, features['hist_item_list'], params) # batch * emb_dim
+            query_item_emb = tf.expand_dims(item_emb, 1)  
+            item_att_emb, _ = attention(query_item_emb, item_hist_emb, params, features['hist_item_list']) 
+            item_att_emb = tf.reshape(item_att_emb, [-1, params['amazon_emb_dim']])
 
         with tf.compat.v1.variable_scope('category_attention'):
             cate_hist_emb = tf.nn.embedding_lookup( cate_embedding,
                                                     features['hist_category_list'] )  # batch * padded_size * emb_dim
             cate_emb = tf.nn.embedding_lookup( cate_embedding, features['item_category'] )  # batch * emd_dim
-            cate_att_emb = attention(cate_emb, cate_hist_emb, features['hist_category_list'], params) # batch * emb_dim
+            query_cate_emb = tf.expand_dims(cate_emb, 1)  
+            cate_att_emb, _ = attention(query_cate_emb, cate_hist_emb, params, features['hist_category_list'])
+            cate_att_emb = tf.reshape(cate_att_emb, [-1, params['amazon_emb_dim']])
 
-    item_ubc_emb = ubc_layer(features, params, embtb=item_embedding, name='item')
-    cate_ubc_emb = ubc_layer(features, params, embtb=cate_embedding, name='category')
+    item_ubc_emb, item_self_emb = ubc_layer(features, params, embtb=item_embedding, name='item')
+    cate_ubc_emb, cate_self_emb = ubc_layer(features, params, embtb=cate_embedding, name='category')
 
     with tf.compat.v1.variable_scope('Attention_Weight_Layer'):
-        item_att_emb, item_ubc_emb = att_weight_layer(item_att_emb, item_ubc_emb, f_user, name='item')
-        cate_att_emb, cate_ubc_emb = att_weight_layer(cate_att_emb, cate_ubc_emb, f_user, name='cate')
+        item_self_emb, item_ubc_emb = att_weight_layer(item_self_emb, item_ubc_emb, f_user, name='item')
+        cate_self_emb, cate_ubc_emb = att_weight_layer(cate_self_emb, cate_ubc_emb, f_user, name='cate')
 
 
     # Concat attention embedding and all other features
     with tf.compat.v1.variable_scope('Concat_Layer'):
-        fc = tf.concat([item_att_emb, cate_att_emb, item_ubc_emb, cate_ubc_emb, item_emb, cate_emb, f_dense],  axis=1 )
+        fc = tf.concat([item_att_emb, cate_att_emb, item_self_emb, item_ubc_emb, cate_self_emb, cate_ubc_emb, item_emb, cate_emb, f_dense],  axis=1 )
         add_layer_summary('fc_concat', fc)
 
     # whatever model you want after fc: here for simplicity use only MLP, you can try DCN/DeepFM
@@ -81,7 +85,8 @@ build_estimator = build_estimator_helper(
                    'batch_norm' : True,
                    'learning_rate' : 0.01,
                    'hidden_units' : [80,40],
-                   'attention_hidden_units':[80,40],
+                   'attention_hidden_units': 80,
+                   'atten_mode': 'ln', 
                    'amazon_item_count': AMAZON_ITEM_COUNT,
                    'amazon_cate_count': AMAZON_CATE_COUNT,
                    'amazon_emb_dim': AMAZON_EMB_DIM,
