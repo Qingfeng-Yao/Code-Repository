@@ -2,32 +2,6 @@ import tensorflow as tf
 from const import *
 from config import *
 
-def parse_example_helper_csv(line ):
-    columns = tf.io.decode_csv( [line], record_defaults = CSV_RECORD_DEFAULTS )
-
-    features = dict( zip( FEATURE_NAME, columns ) )
-
-    target = tf.reshape( tf.cast( tf.equal( features.pop( TARGET  ), TARGET_VAL ), tf.float32 ), [-1] )
-
-    return features, target
-
-def parse_example_helper_libsvm(line):
-    # '0 1:0 2:0.053068 3:0.5 4:0.1 5:0.113437 6:0.874'
-    columns = tf.string_split([line], ' ')
-
-    target = tf.string_to_number(columns.values[0], out_type = tf.float32)
-    target = tf.reshape(tf.cast( tf.equal( target, 1), tf.float32), [-1])
-
-    splits = tf.string_split(columns.values[1:], ':')
-    id_vals = tf.reshape(splits.values, splits.dense_shape )
-
-    feat_ids, feat_vals = tf.split(id_vals, num_or_size_splits =2, axis=1)
-    feat_ids = tf.string_to_number(feat_ids , out_type = tf.int32)
-    feat_vals = tf.string_to_number(feat_vals, out_type = tf.float32)
-
-    return {'feat_ids': feat_ids, 'feat_vals': feat_vals}, target
-
-
 def parse_example_helper_tfreocrd(line):
     features = tf.io.parse_single_example(line, features = AMAZON_PROTO)
 
@@ -40,22 +14,12 @@ def parse_example_helper_tfreocrd(line):
 
 def input_fn(step, is_predict, config):
     def func():
-        if config.input_parser == 'csv':
-            dataset = tf.data.TextLineDataset(config.data_dir.format(step)) \
-            .skip(1) \
-            .map(parse_example_helper_csv, num_parallel_calls=8)
-
-        elif config.input_parser == 'libsvm':
-            dataset = tf.data.TextLineDataset(config.data_dir.format(step)) \
-                .skip(1) \
-                .map(parse_example_helper_libsvm, num_parallel_calls=8)
-
-        elif config.input_parser == 'tfrecord':
+        if config.input_parser == 'tfrecord':
             dataset = tf.data.TFRecordDataset(config.data_dir.format(step)) \
                 .map(parse_example_helper_tfreocrd, num_parallel_calls=8)
 
         else:
-            raise Exception('Only [csv|libsvm|tfrecord] are supported now')
+            raise Exception('Only [tfrecord] are supported now')
 
         if not is_predict:
             # shuffle before repeat and batch last
@@ -94,11 +58,22 @@ def tf_estimator_model(model_fn):
             return tf.estimator.EstimatorSpec( mode=tf.estimator.ModeKeys.PREDICT,
                                                predictions=predictions )
 
-        cross_entropy = tf.reduce_mean( tf.nn.sigmoid_cross_entropy_with_logits( labels=labels, logits=y ) )
+        
         if params['model_name'] == 'ubc':
             print("ubc loss!")
+            cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y))
             # cross_entropy += (tf.reduce_sum(tf.compat.v1.get_collection('all_loss_sim'))+tf.reduce_sum(tf.compat.v1.get_collection('all_loss_balance')))
             cross_entropy += 2*tf.reduce_sum(tf.compat.v1.get_collection('all_loss_sim'))
+        elif params['model_name'] == 'userloss':
+            print("userloss!")
+            # 'reviewer_group': <tf.Tensor 'IteratorGetNext:5' shape=(?,) dtype=int64>
+            user_level_0_weight = tf.cast(tf.reshape(tf.equal(features['reviewer_group'], 0), [-1, 1]), tf.float32) * 2
+            user_level_1_weight = tf.cast(tf.reshape(tf.equal(features['reviewer_group'], 1), [-1, 1]), tf.float32) * 1
+            user_level_2_weight = tf.cast(tf.reshape(tf.equal(features['reviewer_group'], 2), [-1, 1]), tf.float32) * 0.8
+            final_weight = user_level_0_weight+user_level_1_weight+user_level_2_weight
+            cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y)*final_weight)
+        else:
+            cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y))
 
         if mode == tf.estimator.ModeKeys.TRAIN:
             optimizer = tf.compat.v1.train.AdagradOptimizer( learning_rate=params['learning_rate'] )
@@ -136,9 +111,6 @@ def build_estimator_helper(model_fn, params):
         )
 
         if 'model_type' in params:
-            # PNN -> PNN/IPNN
-            # FiBiNET -> field_all/field_each/field_interaction
-            # EMMLP -> dense/bucketize
             model_dir = config.checkpoint_dir + '/' + params['model_type']
         else:
             model_dir = config.checkpoint_dir

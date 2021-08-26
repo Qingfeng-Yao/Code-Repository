@@ -7,7 +7,7 @@ import os
 
 class CONFIG:
     """
-        input_parser: libsvm/csv/tfrecord
+        input_parser: tfrecord
         padded_shape: if varlen feature included, pad shape is needed for padded_batch
     """
     CHECKPOINT_DIR = './{}_checkpoint/{}'
@@ -15,15 +15,18 @@ class CONFIG:
     DATA_MAP = {
         # 'amazon': 'amazon_{}.tfrecords'
         # 'amazon': 'amazon_{}_small.tfrecords'
-        'amazon': 'amazon_{}_small_group.tfrecords'
+        'amazon': 'amazon_{}_small_group.tfrecords',
+        'movielens': 'movielens_{}.tfrecords'
     }
 
     PARSER_MAP = {
-        'amazon': 'tfrecord'
+        'amazon': 'tfrecord',
+        'movielens': 'tfrecord'
     }
 
     TYPE_MAP = {
-        'amazon': 'varlen-sparse'
+        'amazon': 'varlen-sparse',
+        'movielens': 'varlen-sparse'
     }
 
     PADDED_SHAPE = {
@@ -35,6 +38,15 @@ class CONFIG:
                 'item': [],
                 'item_category':[],
                 'reviewer_group': []
+        },[1]), 
+        'movielens': ({
+                'user_id': [],
+                'hist_item_list': [None],
+                'hist_category_list':[None],
+                'hist_length': [],
+                'item': [],
+                'item_category':[],
+                'user_group': []
         },[1])
     }
 
@@ -66,10 +78,6 @@ class CONFIG:
     @property
     def input_type(self):
         return CONFIG.TYPE_MAP[self.data_name]
-
-    def get_constZ(self):
-        # get const for dataset: defined in const/dataset
-        pass
 
 MODEL_PARAMS = {
     'batch_size': 512,

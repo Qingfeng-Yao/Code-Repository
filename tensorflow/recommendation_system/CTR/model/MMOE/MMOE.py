@@ -1,8 +1,6 @@
 """
-将主网络改成多个专家网络和门网络，即引入mmoe_layer
-
+在DIN基础上将主网络改成多个专家网络和门网络，即引入mmoe_layer
 """
-
 
 import tensorflow as tf
 
