@@ -33,19 +33,19 @@ class CONFIG:
         'amazon': ({
                 'reviewer_id': [],
                 'hist_item_list': [None],
-                'hist_category_list':[None],
+                'hist_cate_list':[None],
                 'hist_length': [],
                 'item': [],
-                'item_category':[],
+                'item_cate':[],
                 'reviewer_group': []
         },[1]), 
         'movielens': ({
                 'user_id': [],
                 'hist_item_list': [None],
-                'hist_category_list':[None],
+                'hist_cate_list':[None],
                 'hist_length': [],
                 'item': [],
-                'item_category':[],
+                'item_cate':[],
                 'user_group': []
         },[1])
     }

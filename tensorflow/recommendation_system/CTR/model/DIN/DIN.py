@@ -2,73 +2,90 @@ import tensorflow as tf
 
 from const import *
 from model.DIN.preprocess import build_features
-from utils import build_estimator_helper, tf_estimator_model, add_layer_summary
-from layers import stack_dense_layer, attention
+from utils import build_estimator_helper, tf_estimator_model
+from layers import seq_pooling_layer, target_attention_layer, stack_dense_layer
 
 @tf_estimator_model
 def model_fn_varlen(features, labels, mode, params):
-    # print("features: {}".format(features))
-    f_dense = build_features()
-    f_dense = tf.compat.v1.feature_column.input_layer(features, f_dense)
-    # print(f_dense.get_shape().as_list()) # [None, 129]
+    # ---general embedding layer---
+    emb_dict = {}
+    f_dense = build_features(params)
+    f_dense = tf.compat.v1.feature_column.input_layer(features, f_dense) # 用户嵌入表示 [batch_size, f_num*emb_dim]
+    emb_dict['dense_emb'] = f_dense
 
-    # Embedding Look up: history list item and category list
-    item_embedding = tf.compat.v1.get_variable(shape = [params['amazon_item_count'], params['amazon_emb_dim']],
+    # Embedding Look up: history item list and category list
+    item_embedding = tf.compat.v1.get_variable(shape = [params['item_count'], params['emb_dim']],
                                      initializer = tf.truncated_normal_initializer(),
                                      name = 'item_embedding')
-    cate_embedding = tf.compat.v1.get_variable(shape = [params['amazon_cate_count'], params['amazon_emb_dim']],
+    cate_embedding = tf.compat.v1.get_variable(shape = [params['cate_count'], params['emb_dim']],
                                      initializer = tf.truncated_normal_initializer(),
                                      name = 'cate_embedding')
+    item_emb = tf.nn.embedding_lookup( item_embedding, features['item'] )  # [batch_size, emb_dim]
+    emb_dict['item_emb'] = item_emb
+    item_hist_emb = tf.nn.embedding_lookup( item_embedding, features['hist_item_list'] )  # [batch_size, padded_size, emb_dim]
+    emb_dict['item_hist_emb'] = item_hist_emb
+    cate_emb = tf.nn.embedding_lookup( cate_embedding, features['item_cate'] )  # [batch_size, emb_dim]
+    emb_dict['cate_emb'] = cate_emb
+    cate_hist_emb = tf.nn.embedding_lookup( cate_embedding, features['hist_cate_list'] )  # [batch_size, padded_size, emb_dim]
+    emb_dict['cate_hist_emb'] = cate_hist_emb
 
-    with tf.compat.v1.variable_scope('Attention_Layer'):
-        with tf.compat.v1.variable_scope('item_attention'):
-            item_hist_emb = tf.nn.embedding_lookup( item_embedding,
-                                                    features['hist_item_list'] )  # batch * padded_size * emb_dim
-            item_emb = tf.nn.embedding_lookup( item_embedding, features['item'] )  # batch * emb_dim
-            query_item_emb = tf.expand_dims(item_emb, 1)  
-            item_att_emb, _ = attention(query_item_emb, item_hist_emb, params, features['hist_item_list']) # batch * emb_dim
-            item_att_emb = tf.reshape(item_att_emb, [-1, params['amazon_emb_dim']])
+    # ---sequence embedding layer---
+    seq_pooling_layer(features, params, emb_dict, mode)
+    target_attention_layer(features, params, emb_dict)
 
-        with tf.compat.v1.variable_scope('category_attention'):
-            cate_hist_emb = tf.nn.embedding_lookup( cate_embedding,
-                                                    features['hist_category_list'] )  # batch * padded_size * emb_dim
-            cate_emb = tf.nn.embedding_lookup( cate_embedding, features['item_category'] )  # batch * emd_dim
-            query_cate_emb = tf.expand_dims(cate_emb, 1)  
-            cate_att_emb, _ = attention(query_cate_emb, cate_hist_emb, params, features['hist_category_list']) # batch * emb_dim
-            cate_att_emb = tf.reshape(cate_att_emb, [-1, params['amazon_emb_dim']])
+    # Concat features
+    concat_features = []
+    for f in params['input_features']:
+        concat_features.append(emb_dict[f])
+    fc = tf.concat(concat_features, axis=1)
 
-    # Concat attention embedding and all other features
-    with tf.compat.v1.variable_scope('Concat_Layer'):
-        fc = tf.concat([item_att_emb, cate_att_emb, item_emb, cate_emb, f_dense],  axis=1 )
-        add_layer_summary('fc_concat', fc)
+    # ---dnn layer---
+    dense = stack_dense_layer(fc, params['hidden_units'], params['dropout_rate'], params['batch_norm'],
+                              mode, scope='main_dense')
 
-    # whatever model you want after fc: here for simplicity use only MLP, you can try DCN/DeepFM
-    dense = stack_dense_layer(fc, params['hidden_units'],
-                              params['dropout_rate'], params['batch_norm'],
-                              mode, add_summary = True)
-
-    with tf.compat.v1.variable_scope('output'):
-        y = tf.layers.dense(dense, units =1)
-        add_layer_summary( 'output', y )
+    # ---logits layer---
+    y = tf.layers.dense(dense, units=1, name='logit_net')
 
     return y
 
 
 build_estimator = build_estimator_helper(
     model_fn = {
-        'amazon' :model_fn_varlen
+        'amazon': model_fn_varlen,
+        'movielens': model_fn_varlen
     },
     params = {
         'amazon':{ 'dropout_rate' : 0.2,
                    'batch_norm' : True,
                    'learning_rate' : 0.01,
                    'hidden_units' : [80,40],
-                   'attention_hidden_units': 80,
+                   'attention_hidden_unit': 80,
                    'atten_mode': 'ln', 
-                   'amazon_item_count': AMAZON_ITEM_COUNT,
-                   'amazon_cate_count': AMAZON_CATE_COUNT,
-                   'amazon_emb_dim': AMAZON_EMB_DIM,
-                   'model_name': 'din'
+                   'num_heads': 2,
+                   'item_count': AMAZON_ITEM_COUNT,
+                   'cate_count': AMAZON_CATE_COUNT,
+                   'seq_names': ['item', 'cate'],
+                   'sparse_emb_dim': 128,
+                   'emb_dim': AMAZON_EMB_DIM,
+                   'model_name': 'din',
+                   'data_name': 'amazon',
+                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_pool_emb', 'cate_pool_emb', 'item_att_emb', 'cate_att_emb']
+            },
+        'movielens':{ 'dropout_rate' : 0.2,
+                   'batch_norm' : True,
+                   'learning_rate' : 0.01,
+                   'hidden_units' : [80,40],
+                   'attention_hidden_unit': 80,
+                   'atten_mode': 'ln', 
+                   'num_heads': 2,
+                   'item_count': ML_ITEM_COUNT,
+                   'cate_count': ML_CATE_COUNT,
+                   'seq_names': ['item', 'cate'],
+                   'sparse_emb_dim': 128,
+                   'emb_dim': ML_EMB_DIM,
+                   'model_name': 'din',
+                   'data_name': 'movielens',
+                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_pool_emb', 'cate_pool_emb', 'item_att_emb', 'cate_att_emb']
             }
     }
 )

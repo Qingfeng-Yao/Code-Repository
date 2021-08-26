@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 import argparse
 import importlib
 import shutil
@@ -14,15 +15,11 @@ def main(args):
     model = args.model
     config = CONFIG(model_name = model, data_name = args.dataset)
 
-    # clear Existing Model
-    if args.clear_model:
-        try:
-            shutil.rmtree(config.checkpoint_dir)
-            print('{} model cleaned'.format(config.checkpoint_dir))
-        except Exception as e:
-            print('Error! {} occured at model cleaning'.format(e))
-    else:
-        print('{} model not exist'.format(config.checkpoint_dir))
+    try:
+        shutil.rmtree(config.checkpoint_dir)
+        print('{} model cleaned'.format(config.checkpoint_dir))
+    except Exception as e:
+        print('Error! {} occured at model cleaning'.format(e))
 
     # build estimator
     build_estimator = getattr(importlib.import_module('model.{}.{}'.format(model, model)),
@@ -64,8 +61,11 @@ if __name__ =='__main__':
     parser.add_argument('--dataset', type=str, help= 'which dataset to use: amazon | movielens', default='amazon')
     parser.add_argument('--cuda', type=str, help= 'which gpu to use', default='1')
     
-    parser.add_argument('--clear_model', type=int, help= 'Whether to clear existing model', default=1)
     parser.add_argument('--step', type = str, help = 'Train or Predict', default='train')
+
+    # 一般模型参数在config文件中，包括batch_size, num_epochs, buffer_size(用于shuffle)等
+    # 特定模型参数在各个模型文件中，包括dropout_rate, batch_norm, learning_rate, hidden_units, attention_hidden_units, atten_mode, item_count, cate_count, seq_names, emb_dim, model_name, data_name, input_features等
+    # 运行参数在util文件中的build_estimator_helper函数中被定义，包括save_summary_steps, log_step_count_steps, keep_checkpoint_max, save_checkpoints_steps等
     
     
     args = parser.parse_args()

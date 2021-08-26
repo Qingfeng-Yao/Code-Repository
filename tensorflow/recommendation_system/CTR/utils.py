@@ -2,7 +2,7 @@ import tensorflow as tf
 from const import *
 from config import *
 
-def parse_example_helper_tfreocrd(line):
+def parse_example_helper_tfreocrd_amazon(line):
     features = tf.io.parse_single_example(line, features = AMAZON_PROTO)
 
     for i in AMAZON_VARLEN:
@@ -12,14 +12,27 @@ def parse_example_helper_tfreocrd(line):
 
     return features, target
 
+def parse_example_helper_tfreocrd_movielens(line):
+    features = tf.io.parse_single_example(line, features = ML_PROTO)
+
+    for i in ML_VARLEN:
+        features[i] = tf.sparse.to_dense(features[i])
+
+    target = tf.reshape(tf.cast( features.pop( ML_TARGET ), tf.float32),[-1])
+
+    return features, target
+
 def input_fn(step, is_predict, config):
     def func():
-        if config.input_parser == 'tfrecord':
+        if config.input_parser == 'tfrecord' and config.data_name == 'amazon':
             dataset = tf.data.TFRecordDataset(config.data_dir.format(step)) \
-                .map(parse_example_helper_tfreocrd, num_parallel_calls=8)
+                .map(parse_example_helper_tfreocrd_amazon, num_parallel_calls=8)
+        elif config.input_parser == 'tfrecord' and config.data_name == 'movielens':
+            dataset = tf.data.TFRecordDataset(config.data_dir.format(step)) \
+                .map(parse_example_helper_tfreocrd_movielens, num_parallel_calls=8)
 
         else:
-            raise Exception('Only [tfrecord] are supported now')
+            raise Exception('Only [amazon.tfrecord and movielens.tfrecord] are supported now')
 
         if not is_predict:
             # shuffle before repeat and batch last
@@ -48,8 +61,6 @@ def tf_estimator_model(model_fn):
     def model_fn_helper(features, labels, mode, params):
 
         y = model_fn(features, labels, mode, params)
-
-        add_layer_summary('label_mean', labels)
 
         if mode == tf.estimator.ModeKeys.PREDICT:
             predictions = {
@@ -110,10 +121,7 @@ def build_estimator_helper(model_fn, params):
             save_checkpoints_steps =50
         )
 
-        if 'model_type' in params:
-            model_dir = config.checkpoint_dir + '/' + params['model_type']
-        else:
-            model_dir = config.checkpoint_dir
+        model_dir = config.checkpoint_dir
 
         estimator = tf.estimator.Estimator(
             model_fn = model_fn[config.data_name],

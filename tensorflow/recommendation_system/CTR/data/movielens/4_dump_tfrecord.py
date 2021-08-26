@@ -34,10 +34,10 @@ class TFDump(object):
                         feature = {
                             'user_id': TFDump.int_feature( record[0] ),
                             'hist_item_list': TFDump.int_feature( record[1] ),
-                            'hist_category_list': TFDump.int_feature( [self.cate_list[i] for i in record[1]] ),
+                            'hist_cate_list': TFDump.int_feature( [self.cate_list[i] for i in record[1]] ),
                             'hist_length': TFDump.int_feature( len( record[1] ) ),
                             'item': TFDump.int_feature( record[2] ),
-                            'item_category': TFDump.int_feature( self.cate_list[record[2]] ),
+                            'item_cate': TFDump.int_feature( self.cate_list[record[2]] ),
                             'target': TFDump.int_feature( record[3] ),
                             'user_group': TFDump.int_feature( record[4] ) # 添加用户群组信息，对应修改数据集配置，包括const和config文件
                         }
