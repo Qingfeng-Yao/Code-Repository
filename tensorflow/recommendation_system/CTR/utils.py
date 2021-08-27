@@ -70,17 +70,21 @@ def tf_estimator_model(model_fn):
                                                predictions=predictions )
 
         
-        if params['model_name'] == 'ubc':
-            print("ubc loss!")
+        if params['model_name'] == 'usercluster':
+            print("usercluster loss!")
             cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y))
             # cross_entropy += (tf.reduce_sum(tf.compat.v1.get_collection('all_loss_sim'))+tf.reduce_sum(tf.compat.v1.get_collection('all_loss_balance')))
-            cross_entropy += 2*tf.reduce_sum(tf.compat.v1.get_collection('all_loss_sim'))
+            cross_entropy += params['weight_of_loss_sim']*tf.reduce_sum(tf.compat.v1.get_collection('all_loss_sim'))
         elif params['model_name'] == 'userloss':
             print("userloss!")
+            if params['data_name'] == 'amazon':
+                user_group_name = 'reviewer_group'
+            elif params['data_name'] == 'movielens':
+                user_group_name = 'user_group'
             # 'reviewer_group': <tf.Tensor 'IteratorGetNext:5' shape=(?,) dtype=int64>
-            user_level_0_weight = tf.cast(tf.reshape(tf.equal(features['reviewer_group'], 0), [-1, 1]), tf.float32) * 2
-            user_level_1_weight = tf.cast(tf.reshape(tf.equal(features['reviewer_group'], 1), [-1, 1]), tf.float32) * 1
-            user_level_2_weight = tf.cast(tf.reshape(tf.equal(features['reviewer_group'], 2), [-1, 1]), tf.float32) * 0.8
+            user_level_0_weight = tf.cast(tf.reshape(tf.equal(features[user_group_name], 0), [-1, 1]), tf.float32) * params['weight_of_user_0']
+            user_level_1_weight = tf.cast(tf.reshape(tf.equal(features[user_group_name], 1), [-1, 1]), tf.float32) * params['weight_of_user_1']
+            user_level_2_weight = tf.cast(tf.reshape(tf.equal(features[user_group_name], 2), [-1, 1]), tf.float32) * params['weight_of_user_2']
             final_weight = user_level_0_weight+user_level_1_weight+user_level_2_weight
             cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y)*final_weight)
         else:

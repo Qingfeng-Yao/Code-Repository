@@ -26,8 +26,13 @@
 - 模型预测: 调用estimator.predict方法
 - 具体模型(指标AUC)
     - DIN: 0.7506
-    - MMOE: 0.7566
-    - BIAS: 0.7624
+    - MOE: 0.7566
+    - Bias: 0.7624
+    - UserLoss
+    - UserInput
+    - Star
+    - UserCluster
+
     - `STAR: 0.7687`
     - UserLoss: 0.7608
     - UBC: 

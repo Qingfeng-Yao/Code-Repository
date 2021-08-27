@@ -1,9 +1,9 @@
 import tensorflow as tf
 
 from const import *
-from model.UserLoss.preprocess import build_features
+from model.MOE.preprocess import build_features
 from utils import build_estimator_helper, tf_estimator_model
-from layers import seq_pooling_layer, target_attention_layer, moe_layer, stack_dense_layer
+from layers import seq_pooling_layer, target_attention_layer, moe_layer
 
 @tf_estimator_model
 def model_fn_varlen(features, labels, mode, params):
@@ -40,15 +40,12 @@ def model_fn_varlen(features, labels, mode, params):
     fc = tf.concat(concat_features, axis=1)
 
     # ---dnn layer---
-    main_net = moe_layer(fc, params, mode, scope='main_dense_moe')
-    bias_net = stack_dense_layer(fc, params['hidden_units'], params['dropout_rate'], params['batch_norm'],
-                              mode, scope='bias_dense')
+    dense = moe_layer(fc, params, mode, scope='main_dense_moe')
 
     # ---logits layer---
-    main_y = tf.layers.dense(main_net, units=1, name='main_logit_net')
-    bias_y = tf.layers.dense(bias_net, units=1, name='bias_logit_net')
+    y = tf.layers.dense(dense, units=1, name='logit_net')
 
-    return main_y+bias_y
+    return y
 
 
 build_estimator = build_estimator_helper(
@@ -68,12 +65,9 @@ build_estimator = build_estimator_helper(
                    'cate_count': AMAZON_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 2,
-                   'weight_of_user_0': 2,
-                   'weight_of_user_1': 1,
-                   'weight_of_user_2': 0.8,
                    'sparse_emb_dim': 128,
                    'emb_dim': AMAZON_EMB_DIM,
-                   'model_name': 'userloss',
+                   'model_name': 'moe',
                    'data_name': 'amazon',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             },
@@ -88,12 +82,9 @@ build_estimator = build_estimator_helper(
                    'cate_count': ML_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 2,
-                   'weight_of_user_0': 2,
-                   'weight_of_user_1': 1,
-                   'weight_of_user_2': 0.8,
                    'sparse_emb_dim': 128,
                    'emb_dim': ML_EMB_DIM,
-                   'model_name': 'userloss',
+                   'model_name': 'moe',
                    'data_name': 'movielens',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             }

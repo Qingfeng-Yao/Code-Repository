@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from const import *
-from model.UserLoss.preprocess import build_features
+from model.UserInput.preprocess import build_features
 from utils import build_estimator_helper, tf_estimator_model
 from layers import seq_pooling_layer, target_attention_layer, moe_layer, stack_dense_layer
 
@@ -9,9 +9,12 @@ from layers import seq_pooling_layer, target_attention_layer, moe_layer, stack_d
 def model_fn_varlen(features, labels, mode, params):
     # ---general embedding layer---
     emb_dict = {}
-    f_dense = build_features(params)
+    f_dense, f_user_group = build_features(params)
     f_dense = tf.compat.v1.feature_column.input_layer(features, f_dense) # 用户嵌入表示 [batch_size, f_num*emb_dim]
+    f_user_group = tf.compat.v1.feature_column.input_layer(features, f_user_group)
     emb_dict['dense_emb'] = f_dense
+    emb_dict['user_group_emb'] = f_user_group
+
 
     # Embedding Look up: history item list and category list
     item_embedding = tf.compat.v1.get_variable(shape = [params['item_count'], params['emb_dim']],
@@ -38,17 +41,25 @@ def model_fn_varlen(features, labels, mode, params):
     for f in params['input_features']:
         concat_features.append(emb_dict[f])
     fc = tf.concat(concat_features, axis=1)
+    concat_auxiliary_features = []
+    for f in params['auxiliary_input_features']:
+        concat_auxiliary_features.append(emb_dict[f])
+    auxiliary_fc = tf.concat(concat_auxiliary_features, axis=1)
 
     # ---dnn layer---
     main_net = moe_layer(fc, params, mode, scope='main_dense_moe')
     bias_net = stack_dense_layer(fc, params['hidden_units'], params['dropout_rate'], params['batch_norm'],
                               mode, scope='bias_dense')
+    auxiliary_net = stack_dense_layer(auxiliary_fc, params['hidden_units'],
+                                params['dropout_rate'], params['batch_norm'],
+                                mode, scope='auxiliary_dense')
 
     # ---logits layer---
     main_y = tf.layers.dense(main_net, units=1, name='main_logit_net')
     bias_y = tf.layers.dense(bias_net, units=1, name='bias_logit_net')
+    auxiliary_y = tf.layers.dense(auxiliary_net, units=1, name='auxiliary_logit_net')
 
-    return main_y+bias_y
+    return main_y+bias_y+auxiliary_y
 
 
 build_estimator = build_estimator_helper(
@@ -68,14 +79,13 @@ build_estimator = build_estimator_helper(
                    'cate_count': AMAZON_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 2,
-                   'weight_of_user_0': 2,
-                   'weight_of_user_1': 1,
-                   'weight_of_user_2': 0.8,
+                   'num_user_groups': 3,
                    'sparse_emb_dim': 128,
                    'emb_dim': AMAZON_EMB_DIM,
-                   'model_name': 'userloss',
+                   'model_name': 'userinput',
                    'data_name': 'amazon',
-                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
+                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb'],
+                   'auxiliary_input_features': ['user_group_emb', 'dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             },
         'movielens':{ 'dropout_rate' : 0.2,
                    'batch_norm' : True,
@@ -88,14 +98,13 @@ build_estimator = build_estimator_helper(
                    'cate_count': ML_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 2,
-                   'weight_of_user_0': 2,
-                   'weight_of_user_1': 1,
-                   'weight_of_user_2': 0.8,
+                   'num_user_groups': 3,
                    'sparse_emb_dim': 128,
                    'emb_dim': ML_EMB_DIM,
-                   'model_name': 'userloss',
+                   'model_name': 'userinput',
                    'data_name': 'movielens',
-                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
+                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb'],
+                   'auxiliary_input_features': ['user_group_emb', 'dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             }
     }
 )

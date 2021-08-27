@@ -57,7 +57,7 @@ def main(args):
 if __name__ =='__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type = str, help = 'which model to use: DIN | MMOE | MMOEBIAS | STAR | UserLoss', default='DIN')
+    parser.add_argument('--model', type = str, help = 'which model to use: DIN | MOE | Bias | UserLoss | UserInput | Star | UserCluster', default='DIN')
     parser.add_argument('--dataset', type=str, help= 'which dataset to use: amazon | movielens', default='amazon')
     parser.add_argument('--cuda', type=str, help= 'which gpu to use', default='1')
     

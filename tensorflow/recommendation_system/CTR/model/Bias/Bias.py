@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from const import *
-from model.UserLoss.preprocess import build_features
+from model.Bias.preprocess import build_features
 from utils import build_estimator_helper, tf_estimator_model
 from layers import seq_pooling_layer, target_attention_layer, moe_layer, stack_dense_layer
 
@@ -68,12 +68,9 @@ build_estimator = build_estimator_helper(
                    'cate_count': AMAZON_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 2,
-                   'weight_of_user_0': 2,
-                   'weight_of_user_1': 1,
-                   'weight_of_user_2': 0.8,
                    'sparse_emb_dim': 128,
                    'emb_dim': AMAZON_EMB_DIM,
-                   'model_name': 'userloss',
+                   'model_name': 'bias',
                    'data_name': 'amazon',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             },
@@ -88,12 +85,9 @@ build_estimator = build_estimator_helper(
                    'cate_count': ML_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 2,
-                   'weight_of_user_0': 2,
-                   'weight_of_user_1': 1,
-                   'weight_of_user_2': 0.8,
                    'sparse_emb_dim': 128,
                    'emb_dim': ML_EMB_DIM,
-                   'model_name': 'userloss',
+                   'model_name': 'bias',
                    'data_name': 'movielens',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             }

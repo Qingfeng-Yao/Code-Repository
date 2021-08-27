@@ -61,7 +61,7 @@ build_estimator = build_estimator_helper(
                    'hidden_units' : [80,40],
                    'attention_hidden_unit': 80,
                    'atten_mode': 'ln', 
-                   'num_heads': 2,
+                   'num_heads': 1,
                    'item_count': AMAZON_ITEM_COUNT,
                    'cate_count': AMAZON_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
@@ -69,7 +69,7 @@ build_estimator = build_estimator_helper(
                    'emb_dim': AMAZON_EMB_DIM,
                    'model_name': 'din',
                    'data_name': 'amazon',
-                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_pool_emb', 'cate_pool_emb', 'item_att_emb', 'cate_att_emb']
+                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             },
         'movielens':{ 'dropout_rate' : 0.2,
                    'batch_norm' : True,
@@ -77,7 +77,7 @@ build_estimator = build_estimator_helper(
                    'hidden_units' : [80,40],
                    'attention_hidden_unit': 80,
                    'atten_mode': 'ln', 
-                   'num_heads': 2,
+                   'num_heads': 1,
                    'item_count': ML_ITEM_COUNT,
                    'cate_count': ML_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
@@ -85,7 +85,7 @@ build_estimator = build_estimator_helper(
                    'emb_dim': ML_EMB_DIM,
                    'model_name': 'din',
                    'data_name': 'movielens',
-                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_pool_emb', 'cate_pool_emb', 'item_att_emb', 'cate_att_emb']
+                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             }
     }
 )
