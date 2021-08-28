@@ -1,5 +1,6 @@
 import tensorflow as tf
 from tensorflow.contrib import layers
+from config import *
 
 def stack_dense_layer(inputs, hidden_units, dropout_rate, batch_norm, mode, scope='dense'):
     with tf.compat.v1.variable_scope(scope):
@@ -148,6 +149,17 @@ def group_layer(features, params, emb_dict):
                         initializer=tf.truncated_normal_initializer()
                     )
             group_hidden = tf.layers.dense(seq_vec_mean, units = params['num_user_groups'], activation = tf.nn.softmax, name ='group_hidden')
+            if params['use_cluster_loss']:
+                target = tf.compat.v1.get_variable(
+                        name="{}_target_prob".format(s),
+                        shape=[MODEL_PARAMS['batch_size'], group_hidden.get_shape().as_list()[1]],
+                        initializer=tf.truncated_normal_initializer()
+                    )
+                # expect_prob = tf.random_normal(shape=[params['num_user_groups']], mean=0, stddev=1)
+                expect_prob = tf.random_uniform(shape=[params['num_user_groups']], minval=0, maxval=1)
+                pred_prob = tf.reduce_mean(group_hidden, axis=0)
+                loss_cluster = tf.reduce_sum(tf.multiply(target, tf.log(tf.div(target, group_hidden))))+tf.reduce_sum(tf.multiply(pred_prob, tf.log(tf.div(pred_prob, expect_prob))))
+                tf.add_to_collection('all_loss_cluster', loss_cluster)
             index_ids = tf.argmax(group_hidden, axis=-1)
             seq_group_embedding = tf.nn.embedding_lookup(seq_group_embedding_table, index_ids)
             weighted_group_emb = tf.matmul(group_hidden, seq_group_embedding_table)
@@ -158,26 +170,20 @@ def group_layer(features, params, emb_dict):
                         axis=-1)), 0)
             tf.add_to_collection('all_loss_sim', loss_sim)
 
-            # importance = tf.reduce_sum(group_hidden, axis=0)
-            # eps = 1e-10
-            # mean, variance  = tf.nn.moments(importance, axes=0)
-            # loss_balance = variance / (mean**2 + eps)
-            # tf.add_to_collection('all_loss_balance', loss_balance)
-
             emb_dict['{}_group_emb'.format(s)] = seq_group_embedding
 
-def att_weight_layer(att_emb, ubc_emb, query, name):
-    with tf.compat.v1.variable_scope(name):
-        att_hidden = tf.layers.dense(att_emb, units = query.get_shape().as_list()[-1], activation = tf.nn.relu, name ='att_hidden')
-        ubc_hidden = tf.layers.dense(ubc_emb, units = query.get_shape().as_list()[-1], activation = tf.nn.relu, name ='ubc_hidden')
-        att_query_sim = tf.reduce_sum(tf.multiply(att_hidden, query), axis=1, keep_dims=True)
-        ubc_query_sim = tf.reduce_sum(tf.multiply(ubc_hidden, query), axis=1, keep_dims=True)
+def att_weight_layer(per_emb, group_emb, query, scope):
+    with tf.compat.v1.variable_scope(scope):
+        per_hidden = tf.layers.dense(per_emb, units = query.get_shape().as_list()[-1], activation = tf.nn.relu, name ='per_hidden')
+        group_hidden = tf.layers.dense(group_emb, units = query.get_shape().as_list()[-1], activation = tf.nn.relu, name ='group_hidden')
+        per_query_sim = tf.reduce_sum(tf.multiply(per_hidden, query), axis=1, keep_dims=True)
+        group_query_sim = tf.reduce_sum(tf.multiply(group_hidden, query), axis=1, keep_dims=True)
 
-        logit_att = tf.exp(att_query_sim)
-        logit_ubc = tf.exp(ubc_query_sim)
-        att_emb = tf.multiply(att_emb, tf.div(logit_att, logit_att + logit_ubc))
-        ubc_emb = tf.multiply(ubc_emb, tf.div(logit_ubc, logit_att + logit_ubc))
-    return att_emb, ubc_emb
+        logit_per = tf.exp(per_query_sim)
+        logit_group = tf.exp(group_query_sim)
+        per_emb = tf.multiply(per_emb, tf.div(logit_per, logit_per + logit_group))
+        group_emb = tf.multiply(group_emb, tf.div(logit_group, logit_per + logit_group))
+    return per_emb, group_emb
 
 def moe_layer(dense, params, mode, scope):
     with tf.compat.v1.variable_scope(scope):

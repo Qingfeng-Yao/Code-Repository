@@ -3,14 +3,14 @@ import tensorflow as tf
 from const import *
 from model.UserCluster.preprocess import build_features
 from utils import build_estimator_helper, tf_estimator_model
-from layers import seq_pooling_layer, target_attention_layer, moe_layer, stack_dense_layer, group_layer
+from layers import seq_pooling_layer, target_attention_layer, moe_layer, stack_dense_layer, group_layer, att_weight_layer
 
 @tf_estimator_model
 def model_fn_varlen(features, labels, mode, params):
     # ---general embedding layer---
     emb_dict = {}
     f_dense = build_features(params)
-    f_dense = tf.compat.v1.feature_column.input_layer(features, f_dense) # 用户嵌入表示 [batch_size, f_num*emb_dim]
+    f_dense = tf.compat.v1.feature_column.input_layer(features, f_dense) # [batch_size, f_num*emb_dim]
     emb_dict['dense_emb'] = f_dense
 
     # Embedding Look up: history item list and category list
@@ -36,9 +36,15 @@ def model_fn_varlen(features, labels, mode, params):
 
     # Concat features
     concat_features = []
-    for f in params['input_features']+params['group_features']:
+    for f in params['input_features']:
         concat_features.append(emb_dict[f])
     fc = tf.concat(concat_features, axis=1)
+    concat_group_features = []
+    for f in params['group_features']:
+        concat_group_features.append(emb_dict[f])
+    fc_group = tf.concat(concat_group_features, axis=1)
+    fc, fc_group = att_weight_layer(fc, fc_group, emb_dict['item_emb'], scope='weight_feature_layer')
+    fc = tf.concat([fc, fc_group], axis=1) 
 
     # ---dnn layer---
     main_net = moe_layer(fc, params, mode, scope='main_dense_moe')
@@ -74,6 +80,7 @@ build_estimator = build_estimator_helper(
                    'sparse_emb_dim': 128,
                    'emb_dim': AMAZON_EMB_DIM,
                    'model_name': 'usercluster',
+                   'use_cluster_loss': False,
                    'data_name': 'amazon',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb'],
                    'group_features': ['item_group_emb', 'cate_group_emb']
@@ -94,6 +101,7 @@ build_estimator = build_estimator_helper(
                    'sparse_emb_dim': 128,
                    'emb_dim': ML_EMB_DIM,
                    'model_name': 'usercluster',
+                   'use_cluster_loss': False,
                    'data_name': 'movielens',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb'],
                    'group_features': ['item_group_emb', 'cate_group_emb']

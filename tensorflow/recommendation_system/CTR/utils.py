@@ -73,8 +73,9 @@ def tf_estimator_model(model_fn):
         if params['model_name'] == 'usercluster':
             print("usercluster loss!")
             cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y))
-            # cross_entropy += (tf.reduce_sum(tf.compat.v1.get_collection('all_loss_sim'))+tf.reduce_sum(tf.compat.v1.get_collection('all_loss_balance')))
             cross_entropy += params['weight_of_loss_sim']*tf.reduce_sum(tf.compat.v1.get_collection('all_loss_sim'))
+            if params['use_cluster_loss']:
+                cross_entropy += tf.reduce_sum(tf.compat.v1.get_collection('all_loss_cluster'))
         elif params['model_name'] == 'userloss':
             print("userloss!")
             if params['data_name'] == 'amazon':
