@@ -80,7 +80,7 @@ build_estimator = build_estimator_helper(
                    'sparse_emb_dim': 128,
                    'emb_dim': AMAZON_EMB_DIM,
                    'model_name': 'usercluster',
-                   'use_cluster_loss': False,
+                   'use_cluster_loss': True,
                    'data_name': 'amazon',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb'],
                    'group_features': ['item_group_emb', 'cate_group_emb']
@@ -101,7 +101,7 @@ build_estimator = build_estimator_helper(
                    'sparse_emb_dim': 128,
                    'emb_dim': ML_EMB_DIM,
                    'model_name': 'usercluster',
-                   'use_cluster_loss': False,
+                   'use_cluster_loss': True,
                    'data_name': 'movielens',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb'],
                    'group_features': ['item_group_emb', 'cate_group_emb']

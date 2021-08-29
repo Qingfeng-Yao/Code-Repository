@@ -31,8 +31,8 @@
 
     - `MaxPooling`
 
-    - UserCluster: 0.7238
-    - `ClusterLoss`
+    - UserCluster: 0.7238/0.7037
+    - `ClusterLoss`: 
 
     - `UserExpert`
 
@@ -41,7 +41,7 @@
     - UserInput: 0.7628
     - Star: 0.7484 
 
-    - `UserRecogniton`
+    - `UserRecognition`
 
     
 
