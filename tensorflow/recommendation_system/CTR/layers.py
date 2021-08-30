@@ -85,6 +85,7 @@ def attention(queries, keys, params, keys_id=None, queries_id=None, scope='multi
 
     return outputs
 
+# mean pooling, max pooling
 def seq_pooling_layer(features, params, emb_dict, mode):
     for s in params['seq_names']:
         hist_name = 'hist_{}_list'.format(s)
@@ -97,11 +98,13 @@ def seq_pooling_layer(features, params, emb_dict, mode):
             seq_vec = tf.reshape(tf.where(tf.reshape(sequence_mask, [-1]),
                                                   seq_2d, tf.zeros_like(seq_2d)),
                                          tf.shape(sequence))
+            emb_dict['{}_max_pool_emb'.format(s)] = tf.reduce_max(seq_vec, axis=1)
+
             seq_length = tf.reduce_sum(tf.cast(sequence_mask, tf.float32), axis=1,
                                                    keep_dims=True)  # [batch_size, 1]
             seq_length_tile = tf.tile(seq_length, [1, seq_vec.get_shape().as_list()[-1]])  # [batch_size, emb_dim]
             seq_vec_mean = tf.multiply(tf.reduce_sum(seq_vec, axis=1), tf.pow(seq_length_tile, -1))
-            emb_dict['{}_pool_emb'.format(s)] = seq_vec_mean
+            emb_dict['{}_mean_pool_emb'.format(s)] = seq_vec_mean
 
 def target_attention_layer(features, params, emb_dict):
     for s in params['seq_names']:
@@ -200,6 +203,31 @@ def moe_layer(dense, params, mode, scope):
         expert_output = stack_dense_layer(expert_output, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='CTR_Task_Dense')
         
     return expert_output
+
+def mmoe_layer(dense, params, mode, scope):
+    with tf.compat.v1.variable_scope(scope):
+        outputs = []
+        for n in range(params['num_of_expert']):
+            out = stack_dense_layer(dense, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='Expert_{}'.format(n))
+            outputs.append(out)
+            
+        out = stack_dense_layer(dense, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='Gate')
+        y = tf.layers.dense(out, units=params['num_of_expert'], name = 'gate_out') 
+        gate_weights = tf.nn.softmax(y, dim=1)
+        if not params['use_one_gate']:
+            out = stack_dense_layer(dense, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='Gate_plus')
+            y = tf.layers.dense(out, units=params['num_of_expert'], name = 'gate_out_plus') 
+            gate_weights_plus = tf.nn.softmax(y, dim=1)
+
+        expert_output_ctr = tf.reduce_sum(tf.multiply(tf.expand_dims(gate_weights, -1), tf.stack(values=outputs, axis=1)), axis=1)
+        if params['use_one_gate']:
+            expert_output_recognition = tf.reduce_sum(tf.multiply(tf.expand_dims(gate_weights_plus, -1), tf.stack(values=outputs, axis=1)), axis=1)
+        else:
+            expert_output_recognition = tf.reduce_sum(tf.multiply(tf.expand_dims(gate_weights, -1), tf.stack(values=outputs, axis=1)), axis=1)
+        expert_output_ctr = stack_dense_layer(expert_output_ctr, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='CTR_Task_Dense')
+        expert_output_recognition = stack_dense_layer(expert_output_recognition, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='Recognition_Task_Dense')
+        
+    return expert_output_ctr, expert_output_recognition
 
 def star_layer(dense, params, features, mode, scope):
     with tf.compat.v1.variable_scope(scope):

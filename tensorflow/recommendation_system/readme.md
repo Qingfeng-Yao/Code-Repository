@@ -28,26 +28,16 @@
     - DIN: 0.7321/0.9140
     - MOE: 0.7485/0.9296
     - Bias: 0.7637/0.9331
-
-    - `MaxPooling`
-
+    - (UserLoss: 0.7531/0.9311)
+    - (UserRecognition: 0.6869)
+    - (UserInput: 0.7628/0.9359)
     - UserCluster: 0.7238/0.7037
-    - `ClusterLoss`: 
+    - ClusterLoss: 
 
-    - `UserExpert`
+    - UserSparseExpert
+    - UserExpert
 
-    - UserLoss: 0.7531/0.9310
-
-    - UserInput: 0.7628/0.9359
     - Star: 0.7484 
 
-    - `UserRecognition`
-
     
-
-   
-    
-    
-
-    - `STAR: 0.7687`
         

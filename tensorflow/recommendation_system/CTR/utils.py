@@ -60,7 +60,10 @@ def add_layer_summary(tag, value):
 def tf_estimator_model(model_fn):
     def model_fn_helper(features, labels, mode, params):
 
-        y = model_fn(features, labels, mode, params)
+        if params['model_name'] == 'userrecognition':
+            y, y_recognition = model_fn(features, labels, mode, params)
+        else:
+            y = model_fn(features, labels, mode, params)
 
         if mode == tf.estimator.ModeKeys.PREDICT:
             predictions = {
@@ -88,6 +91,17 @@ def tf_estimator_model(model_fn):
             user_level_2_weight = tf.cast(tf.reshape(tf.equal(features[user_group_name], 2), [-1, 1]), tf.float32) * params['weight_of_user_2']
             final_weight = user_level_0_weight+user_level_1_weight+user_level_2_weight
             cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y)*final_weight)
+        elif params['model_name'] == 'userrecognition':
+            print("userrecognition loss!")
+            cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y))
+            if params['data_name'] == 'amazon':
+                user_group_name = 'reviewer_group'
+            elif params['data_name'] == 'movielens':
+                user_group_name = 'user_group'
+            user_level = tf.reshape(features[user_group_name], [-1])
+            user_level = tf.one_hot(user_level, params['num_user_group'])
+            user_level = tf.cast(user_level, tf.float32)
+            cross_entropy += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=user_level, logits=y_recognition))
         else:
             cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y))
 
