@@ -36,7 +36,7 @@
 
     - `UserExpert`
 
-    - UserLoss: 0.7531
+    - UserLoss: 0.7531/0.9310
 
     - UserInput: 0.7628/0.9359
     - Star: 0.7484 
