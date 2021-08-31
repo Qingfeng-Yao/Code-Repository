@@ -50,16 +50,16 @@ def model_fn_varlen(features, labels, mode, params):
     main_net = star_layer(fc, params, features, mode, scope='main_moe_star')
     bias_net = stack_dense_layer(fc, params['hidden_units'], params['dropout_rate'], params['batch_norm'],
                               mode, scope='bias_dense')
-    auxiliary_net = stack_dense_layer(auxiliary_fc, params['hidden_units'],
-                                params['dropout_rate'], params['batch_norm'],
-                                mode, scope='auxiliary_dense')
+    # auxiliary_net = stack_dense_layer(auxiliary_fc, params['hidden_units'],
+    #                             params['dropout_rate'], params['batch_norm'],
+    #                             mode, scope='auxiliary_dense')
 
     # ---logits layer---
     main_y = tf.layers.dense(main_net, units=1, name='main_logit_net')
     bias_y = tf.layers.dense(bias_net, units=1, name='bias_logit_net')
-    auxiliary_y = tf.layers.dense(auxiliary_net, units=1, name='auxiliary_logit_net')
+    # auxiliary_y = tf.layers.dense(auxiliary_net, units=1, name='auxiliary_logit_net')
 
-    return main_y+bias_y+auxiliary_y
+    return main_y+bias_y#+auxiliary_y
 
 
 build_estimator = build_estimator_helper(

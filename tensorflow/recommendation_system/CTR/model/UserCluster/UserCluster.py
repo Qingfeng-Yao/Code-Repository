@@ -33,18 +33,13 @@ def model_fn_varlen(features, labels, mode, params):
     seq_pooling_layer(features, params, emb_dict, mode)
     target_attention_layer(features, params, emb_dict)
     group_layer(features, params, emb_dict)
+    att_weight_layer(emb_dict, params, scope='weight_feature_layer')
 
     # Concat features
     concat_features = []
     for f in params['input_features']:
         concat_features.append(emb_dict[f])
     fc = tf.concat(concat_features, axis=1)
-    concat_group_features = []
-    for f in params['group_features']:
-        concat_group_features.append(emb_dict[f])
-    fc_group = tf.concat(concat_group_features, axis=1)
-    fc, fc_group = att_weight_layer(fc, fc_group, emb_dict['item_emb'], scope='weight_feature_layer')
-    fc = tf.concat([fc, fc_group], axis=1) 
 
     # ---dnn layer---
     main_net = moe_layer(fc, params, mode, scope='main_dense_moe')
@@ -76,14 +71,13 @@ build_estimator = build_estimator_helper(
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 2,
                    'num_user_groups': 50,
-                   'weight_of_loss_sim': 2,
+                   'weight_of_loss_sim': 1,
                    'sparse_emb_dim': 128,
                    'emb_dim': AMAZON_EMB_DIM,
                    'model_name': 'usercluster',
-                   'use_cluster_loss': True,
+                   'use_cluster_loss': False,
                    'data_name': 'amazon',
-                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb'],
-                   'group_features': ['item_group_emb', 'cate_group_emb']
+                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb', 'item_group_emb', 'cate_group_emb', 'item_self_att_emb', 'cate_self_att_emb'],
             },
         'movielens':{ 'dropout_rate' : 0.2,
                    'batch_norm' : True,
@@ -97,14 +91,13 @@ build_estimator = build_estimator_helper(
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 2,
                    'num_user_groups': 50,
-                   'weight_of_loss_sim': 2,
+                   'weight_of_loss_sim': 1,
                    'sparse_emb_dim': 128,
                    'emb_dim': ML_EMB_DIM,
                    'model_name': 'usercluster',
-                   'use_cluster_loss': True,
+                   'use_cluster_loss': False,
                    'data_name': 'movielens',
-                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb'],
-                   'group_features': ['item_group_emb', 'cate_group_emb']
+                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb', 'item_group_emb', 'cate_group_emb', 'item_self_att_emb', 'cate_self_att_emb'],
             }
     }
 )

@@ -80,7 +80,7 @@ class CONFIG:
         return CONFIG.TYPE_MAP[self.data_name]
 
 MODEL_PARAMS = {
-    'batch_size': 256,
+    'batch_size': 512,
     'num_epochs': 5000,
     'buffer_size': 512
 }

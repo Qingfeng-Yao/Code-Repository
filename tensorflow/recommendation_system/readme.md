@@ -25,19 +25,20 @@
 - 模型训练: 分别定义tf.estimator.TrainSpec和tf.estimator.EvalSpec，然后和模型一起传入到tf.estimator.train_and_evaluate中
 - 模型预测: 调用estimator.predict方法
 - 具体模型(指标AUC)
-    - DIN: 0.7321/0.9140
+    - DIN: 0.7370/0.9137
     - MOE: 0.7485/0.9296
     - Bias: 0.7637/0.9331
-    - (UserLoss: 0.7531/0.9311)
-    - (UserRecognition: 0.6869)
     - (UserInput: 0.7628/0.9359)
-    - UserCluster: 0.7238/0.7037
-    - ClusterLoss: 
-
+    - (UserLoss: 0.7584/0.9307)
+    - (Star: 0.7410/0.9270)
+    - (UserRecognition: 0.6869)
+    - UserCluster: 0.7308/(64)
+        - +ClusterLoss: 0.6973
+        - +Adversarial: 
     - UserSparseExpert
-    - UserExpert
+    - UserPerExpert
 
-    - Star: 0.7484 
+    
 
     
         
