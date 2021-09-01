@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow.contrib import layers
 from config import *
+from utils import _my_top_k, _rowwise_unsorted_segment_sum, _prob_in_top_k, _gates_to_load, cv_squared
 
 def stack_dense_layer(inputs, hidden_units, dropout_rate, batch_norm, mode, scope='dense'):
     with tf.compat.v1.variable_scope(scope):
@@ -84,6 +85,39 @@ def attention(queries, keys, params, keys_id=None, queries_id=None, scope='multi
             outputs = tf.concat(tf.split(outputs, params['num_heads'], axis=0), axis=2)
 
     return outputs
+
+def noisy_top_k_gating(x, params, mode, noisy_gating=True, noise_epsilon=1e-2, name='noisy_top_k_gating'):
+    with tf.compat.v1.variable_scope(name):
+        input_size = x.get_shape().as_list()[-1]
+        w_gate = tf.compat.v1.get_variable('w_gate', [input_size, params['num_of_expert']], tf.float32, initializer=tf.zeros_initializer())
+        if noisy_gating:
+            w_noise = tf.compat.v1.get_variable("w_noise", [input_size, params['num_of_expert']], tf.float32, initializer=tf.zeros_initializer())
+        clean_logits = tf.matmul(x, w_gate)
+        if noisy_gating:
+            raw_noise_stddev = tf.matmul(x, w_noise)
+            if mode == tf.estimator.ModeKeys.TRAIN: # 只在训练期间加噪声
+                noise_stddev = tf.nn.softplus(raw_noise_stddev) + noise_epsilon
+            else:
+                noise_stddev = 0
+            noisy_logits = clean_logits + (tf.random_normal(tf.shape(clean_logits)) * noise_stddev)
+            logits = noisy_logits
+        else:
+          logits = clean_logits
+        top_logits, top_indices = _my_top_k(logits, min(params['k'] + 1, params['num_of_expert']))
+        # top k logits has shape [batch, k]
+        top_k_logits = tf.slice(top_logits, [0, 0], [-1, params['k']])
+        top_k_indices = tf.slice(top_indices, [0, 0], [-1, params['k']])
+        top_k_gates = tf.nn.softmax(top_k_logits)
+        # This will be a `Tensor` of shape `[batch_size, n]`, with zeros in the
+        # positions corresponding to all but the top k experts per example.
+        gates = _rowwise_unsorted_segment_sum(top_k_gates, top_k_indices, params['num_of_expert'])
+
+        if noisy_gating and params['k'] < params['num_of_expert']:
+            load = tf.reduce_sum(_prob_in_top_k(clean_logits, noisy_logits, noise_stddev, top_logits, params), 0)
+        else:
+            load = _gates_to_load(gates)
+
+        return gates, load
 
 # mean pooling, max pooling
 def seq_pooling_layer(features, params, emb_dict, mode):
@@ -212,6 +246,23 @@ def moe_layer(dense, params, mode, scope):
         expert_output = tf.reduce_sum(tf.multiply(tf.expand_dims(gate_weights, -1), tf.stack(values=outputs, axis=1)), axis=1)
         expert_output = stack_dense_layer(expert_output, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='CTR_Task_Dense')
         
+    return expert_output
+
+def sparse_moe_layer(dense, params, mode, scope):
+    with tf.compat.v1.variable_scope(scope):
+        outputs = []
+        for n in range(params['num_of_expert']):
+            out = stack_dense_layer(dense, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='Expert_{}'.format(n))
+            outputs.append(out)
+
+        gates, load = noisy_top_k_gating(dense, params, mode)
+        importance = tf.reduce_sum(gates, 0)
+        loss = cv_squared(importance) + cv_squared(load)
+        loss *= params['loss_coef']
+        tf.add_to_collection('all_loss_balance', loss)
+
+        expert_output = tf.reduce_sum(tf.multiply(tf.expand_dims(gates, -1), tf.stack(values=outputs, axis=1)), axis=1)
+        expert_output = stack_dense_layer(expert_output, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='CTR_Task_Dense')
     return expert_output
 
 def mmoe_layer(dense, params, mode, scope):

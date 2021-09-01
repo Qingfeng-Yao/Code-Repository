@@ -1,3 +1,5 @@
+import math
+
 import tensorflow as tf
 from const import *
 from config import *
@@ -102,6 +104,10 @@ def tf_estimator_model(model_fn):
             user_level = tf.one_hot(user_level, params['num_user_group'])
             user_level = tf.cast(user_level, tf.float32)
             cross_entropy += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=user_level, logits=y_recognition))
+        elif params['model_name'] == 'usersparseexpert':
+            print("usersparseexpert loss!")
+            cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y))
+            cross_entropy += tf.reduce_sum(tf.compat.v1.get_collection('all_loss_balance'))
         else:
             cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y))
 
@@ -151,3 +157,56 @@ def build_estimator_helper(model_fn, params):
 
         return estimator
     return build_estimator
+
+def _my_top_k(x, k):
+    if k > 10:
+        return tf.nn.top_k(x, k)
+    values = []
+    indices = []
+    depth = tf.shape(x)[1]
+    for i in range(k):
+        values.append(tf.reduce_max(x, 1))
+        argmax = tf.argmax(x, 1)
+        indices.append(argmax)
+        if i + 1 < k:
+            x += tf.one_hot(argmax, depth, -1e9)
+    return tf.stack(values, axis=1), tf.to_int32(tf.stack(indices, axis=1))
+
+def _rowwise_unsorted_segment_sum(values, indices, n):
+    batch, k = tf.unstack(tf.shape(indices), num=2)
+    indices_flat = tf.reshape(indices, [-1]) + tf.div(tf.range(batch * k), k) * n
+    ret_flat = tf.unsorted_segment_sum(
+        tf.reshape(values, [-1]), indices_flat, batch * n)
+    return tf.reshape(ret_flat, [batch, n])
+
+def _prob_in_top_k(clean_values, noisy_values, noise_stddev, noisy_top_values, params):
+    batch = tf.shape(clean_values)[0]
+    m = tf.shape(noisy_top_values)[1]
+    top_values_flat = tf.reshape(noisy_top_values, [-1])
+    threshold_positions_if_in = tf.range(batch) * m + params['k']
+    threshold_if_in = tf.expand_dims(tf.gather(top_values_flat, threshold_positions_if_in), 1)
+    is_in = tf.greater(noisy_values, threshold_if_in)
+    if noise_stddev is None:
+        return tf.to_float(is_in)
+    threshold_positions_if_out = threshold_positions_if_in - 1
+    threshold_if_out = tf.expand_dims(tf.gather(top_values_flat, threshold_positions_if_out), 1)
+    # is each value currently in the top k.
+    prob_if_in = _normal_distribution_cdf(clean_values - threshold_if_in,
+                                            noise_stddev)
+    prob_if_out = _normal_distribution_cdf(clean_values - threshold_if_out,
+                                            noise_stddev)
+    prob = tf.where(is_in, prob_if_in, prob_if_out)
+    return prob
+
+def _normal_distribution_cdf(x, stddev):
+    return 0.5 * (1.0 + tf.erf(x / (math.sqrt(2) * stddev + 1e-20)))
+
+def _gates_to_load(gates):
+    return tf.reduce_sum(tf.to_float(gates > 0), 0)
+
+def cv_squared(x):
+    epsilon = 1e-10
+    float_size = tf.to_float(tf.size(x)) + epsilon
+    mean = tf.reduce_sum(x) / float_size
+    variance = tf.reduce_sum(tf.squared_difference(x, mean)) / float_size
+    return variance / (tf.square(mean) + epsilon)
