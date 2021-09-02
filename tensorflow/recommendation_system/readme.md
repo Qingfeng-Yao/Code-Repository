@@ -1,12 +1,15 @@
 ## 参考资料
 - [DSXiangLi/CTR](https://github.com/DSXiangLi/CTR)
 - [sparse gate](https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/utils/expert_utils.py)
+- [DSelect k](https://github.com/google-research/google-research/tree/master/dselect_k_moe)
 
 ## 参考论文
+- 2017 | ICLR | Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer | Google
 - 2018 | KDD | Deep Interest Network for Click-Through Rate Prediction | Alibaba
 - 2018 | KDD | Modeling Task Relationships in Multi-task Learning with Multi-gate Mixture-of-Experts | Google
 - 2020 | Hybrid Interest Modeling for Long-tailed Users | Alibaba
 - 2021 | One Model to Serve All: Star Topology Adaptive Recommender for Multi-Domain CTR Prediction | Alibaba
+- 2021 | DSelect-k: Differentiable Selection in the Mixture of Experts with Applications to Multi-Task Learning | Google
 
 ## 环境配置
 - `python3.6`; `requirements.txt`
@@ -30,13 +33,13 @@
     - MOE: 0.7475/0.9285
     - Bias: 0.7577/0.9328
     - (UserInput: 0.7648/0.9329)
-    - (UserLoss: 0.7584/0.9307)
+    - (UserLoss: 0.7584/0.9314)
     - (Star: 0.7434/0.9270)
     - (UserRecognition: 0.6869)
     - UserCluster: 0.7268/(bz=16)
         - +ClusterLoss: 0.6973
         - +Adversarial: 
-    - UserSparseExpert: 
+    - UserSparseExpert: 0.7411
     - UserPerExpert
 
     

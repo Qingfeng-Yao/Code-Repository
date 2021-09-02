@@ -68,7 +68,7 @@ build_estimator = build_estimator_helper(
                    'cate_count': AMAZON_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 50,
-                   'k': 5, # top k ; should <= num_of_expert
+                   'k': 20, # top k ; should <= num_of_expert
                    'loss_coef': 1e-2,
                    'sparse_emb_dim': 128,
                    'emb_dim': AMAZON_EMB_DIM,
@@ -87,7 +87,7 @@ build_estimator = build_estimator_helper(
                    'cate_count': ML_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 50,
-                   'k': 5, # top k ; should <= num_of_expert
+                   'k': 20, # top k ; should <= num_of_expert
                    'loss_coef': 1e-2,
                    'sparse_emb_dim': 128,
                    'emb_dim': ML_EMB_DIM,
