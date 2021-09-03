@@ -107,7 +107,10 @@ def tf_estimator_model(model_fn):
         elif params['model_name'] == 'usersparseexpert':
             print("usersparseexpert loss!")
             cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y))
-            cross_entropy += tf.reduce_sum(tf.compat.v1.get_collection('all_loss_balance'))
+            if params['use_dselect']:
+                cross_entropy += tf.reduce_sum(tf.compat.v1.get_collection('all_loss_entropy'))
+            else:
+                cross_entropy += tf.reduce_sum(tf.compat.v1.get_collection('all_loss_balance'))
         else:
             cross_entropy = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=y))
 
@@ -210,3 +213,45 @@ def cv_squared(x):
     mean = tf.reduce_sum(x) / float_size
     variance = tf.reduce_sum(tf.squared_difference(x, mean)) / float_size
     return variance / (tf.square(mean) + epsilon)
+
+def smooth_step(inputs, gamma = 1.0):
+    _lower_bound = -gamma / 2
+    _upper_bound = gamma / 2
+    _a3 = -2 / (gamma**3)
+    _a1 = 3 / (2 * gamma)
+    _a0 = 0.5
+    return tf.where(
+        inputs <= _lower_bound, tf.zeros_like(inputs),
+        tf.where(inputs >= _upper_bound, tf.ones_like(inputs),
+                 _a3 * (inputs**3) + _a1 * inputs + _a0))
+
+def _add_entropy_regularization_loss(params, selector_outputs):
+    """Adds regularization loss based on the selector outputs.
+    Args:
+      selector_outputs: a tensor with shape (batch_size, num_nonzero,
+        num_experts) or (num_nonzero, num_experts), where the last dimension
+        stores the weight vector of each single-expert selector.
+    """
+    num_binary = math.ceil(math.log2(params['num_of_expert']))
+    _power_of_2 = (params['num_of_expert'] == 2**num_binary)
+
+    _num_calls = tf.compat.v1.get_variable('num_calls', [], initializer=tf.zeros_initializer(), trainable=False)
+    _schedule_fn = lambda x: 1e-6
+    assign_op = _num_calls.assign_add(1, read_value=False)
+    preconditions = [] if assign_op is None else [assign_op]
+    with tf.control_dependencies(preconditions):
+        reg_param = _schedule_fn(_num_calls)
+        entropy = -tf.math.reduce_sum(selector_outputs * tf.math.log(selector_outputs + 1e-6))
+        loss =  reg_param * entropy
+
+    if not _power_of_2:
+    # If the number of experts is not a power of 2, we add a regularization
+    # term to prevent the "non-reachable" experts from getting all the nonzero
+    # weights for any single-expert selector. The regularization term is equal
+    # to 1/sum(weights of reachable experts) so that the reachable experts
+    # cannot get zero weights.
+    # In case of example conditioning, this regularizer is added per example.
+    # NOTE: This regularization term has no effect once the sum of the weights
+    # of the reachable experts reaches 1, which is the typical/expected case.
+        loss += tf.math.reduce_sum(1 / tf.math.reduce_sum(selector_outputs, axis=-1))
+    return loss

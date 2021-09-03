@@ -3,7 +3,7 @@ import tensorflow as tf
 from const import *
 from model.UserSparseExpert.preprocess import build_features
 from utils import build_estimator_helper, tf_estimator_model
-from layers import seq_pooling_layer, target_attention_layer, sparse_moe_layer, stack_dense_layer
+from layers import seq_pooling_layer, target_attention_layer, sparse_moe_layer, stack_dense_layer, sparse_moe_layer_with_dselect
 
 @tf_estimator_model
 def model_fn_varlen(features, labels, mode, params):
@@ -40,7 +40,10 @@ def model_fn_varlen(features, labels, mode, params):
     fc = tf.concat(concat_features, axis=1)
 
     # ---dnn layer---
-    main_net = sparse_moe_layer(fc, params, mode, scope='main_dense_sparse_moe')
+    if params['use_dselect']:
+        main_net = sparse_moe_layer_with_dselect(fc, params, mode, scope='main_dense_sparse_moe_with_dselect')
+    else:
+        main_net = sparse_moe_layer(fc, params, mode, scope='main_dense_sparse_moe')
     bias_net = stack_dense_layer(fc, params['hidden_units'], params['dropout_rate'], params['batch_norm'],
                               mode, scope='bias_dense')
 
@@ -73,6 +76,7 @@ build_estimator = build_estimator_helper(
                    'sparse_emb_dim': 128,
                    'emb_dim': AMAZON_EMB_DIM,
                    'model_name': 'usersparseexpert',
+                   'use_dselect': True,
                    'data_name': 'amazon',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             },
@@ -92,6 +96,7 @@ build_estimator = build_estimator_helper(
                    'sparse_emb_dim': 128,
                    'emb_dim': ML_EMB_DIM,
                    'model_name': 'usersparseexpert',
+                   'use_dselect': True,
                    'data_name': 'movielens',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             }

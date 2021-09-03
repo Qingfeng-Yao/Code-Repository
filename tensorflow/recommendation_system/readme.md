@@ -34,12 +34,14 @@
     - Bias: 0.7577/0.9328
     - (UserInput: 0.7648/0.9329)
     - (UserLoss: 0.7584/0.9314)
-    - (Star: 0.7434/0.9270)
+    - (Star: 0.7434/0.9291)
     - (UserRecognition: 0.6869)
     - UserCluster: 0.7268/(bz=16)
         - +ClusterLoss: 0.6973
         - +Adversarial: 
-    - UserSparseExpert: 0.7411
+    - UserSparseExpert: 0.7411/0.9403
+        - +DSelect k(static): 0.7572
+        - +DSelect k(per example): 
     - UserPerExpert
 
     

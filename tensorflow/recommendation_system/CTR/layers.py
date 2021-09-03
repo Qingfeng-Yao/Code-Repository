@@ -1,7 +1,10 @@
+import math
+import numpy as np
+
 import tensorflow as tf
 from tensorflow.contrib import layers
 from config import *
-from utils import _my_top_k, _rowwise_unsorted_segment_sum, _prob_in_top_k, _gates_to_load, cv_squared
+from utils import _my_top_k, _rowwise_unsorted_segment_sum, _prob_in_top_k, _gates_to_load, cv_squared, smooth_step, _add_entropy_regularization_loss
 
 def stack_dense_layer(inputs, hidden_units, dropout_rate, batch_norm, mode, scope='dense'):
     with tf.compat.v1.variable_scope(scope):
@@ -118,6 +121,42 @@ def noisy_top_k_gating(x, params, mode, noisy_gating=True, noise_epsilon=1e-2, n
             load = _gates_to_load(gates)
 
         return gates, load
+
+def compute_expert_weights_with_dselect(params, name='dselect_gating'):
+    with tf.compat.v1.variable_scope(name):
+        # z_logits is a trainable 3D tensor used for selecting the experts.
+        # Axis 0: Number of non-zero experts to select.
+        # Axis 1: Dummy axis of length 1 used for broadcasting.
+        # Axis 2: Each num_binary-dimensional row corresponds to a "single-expert"
+        # selector.
+        num_binary = math.ceil(math.log2(params['num_of_expert']))
+        z_logits = tf.compat.v1.get_variable('z_logits', [params['k'], 1, num_binary], initializer=tf.keras.initializers.RandomUniform(
+        -1.0 / 100, 1.0 / 100), trainable=True)
+        z_logits = tf.tile(z_logits, [1, params['num_of_expert'], 1])
+        # w_logits is a trainable tensor used to assign weights to the
+        # single-expert selectors. Each element of w_logits is a logit.
+        w_logits = tf.compat.v1.get_variable('w_logits', [params['k'], 1], initializer=tf.keras.initializers.RandomUniform(), trainable=True)
+        # binary_matrix is a (num_experts, num_binary)-matrix used for binary
+        # encoding. The i-th row contains a num_binary-digit binary encoding of the
+        # integer i.
+        binary_matrix = np.array([list(np.binary_repr(val, width=num_binary))
+            for val in range(params['num_of_expert'])]).astype(bool)
+        # A constant tensor = binary_matrix, with an additional dimension for
+        # broadcasting.
+        binary_codes = tf.tile(tf.expand_dims(
+            tf.constant(binary_matrix, dtype=bool), axis=0), [params['k'], 1, 1])
+
+        # Shape = (k, num_experts, num_binary).
+        smooth_step_activations = smooth_step(z_logits)
+        # Shape = (k, num_experts).
+        selector_outputs = tf.math.reduce_prod(
+            tf.where(binary_codes, smooth_step_activations,
+                    1 - smooth_step_activations), axis=2)
+        # Weights for the single-expert selectors: shape = (k, 1).
+        selector_weights = tf.nn.softmax(w_logits, axis=0)
+        expert_weights = tf.math.reduce_sum(
+            selector_weights * selector_outputs, axis=0)
+    return expert_weights, selector_outputs
 
 # mean pooling, max pooling
 def seq_pooling_layer(features, params, emb_dict, mode):
@@ -262,6 +301,22 @@ def sparse_moe_layer(dense, params, mode, scope):
         tf.add_to_collection('all_loss_balance', loss)
 
         expert_output = tf.reduce_sum(tf.multiply(tf.expand_dims(gates, -1), tf.stack(values=outputs, axis=1)), axis=1)
+        expert_output = stack_dense_layer(expert_output, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='CTR_Task_Dense')
+    return expert_output
+
+def sparse_moe_layer_with_dselect(dense, params, mode, scope):
+    with tf.compat.v1.variable_scope(scope):
+        outputs = []
+        for n in range(params['num_of_expert']):
+            out = stack_dense_layer(dense, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='Expert_{}'.format(n))
+            outputs.append(out)
+
+        expert_weights, selector_outputs = compute_expert_weights_with_dselect(params) # (num_experts, ), (k, num_experts)
+        loss = _add_entropy_regularization_loss(params, selector_outputs)
+        tf.add_to_collection('all_loss_entropy', loss)
+
+        expert_output = tf.math.accumulate_n(
+          [expert_weights[i] * outputs[i] for i in range(params['num_of_expert'])])
         expert_output = stack_dense_layer(expert_output, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='CTR_Task_Dense')
     return expert_output
 
