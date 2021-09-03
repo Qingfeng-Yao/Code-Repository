@@ -158,6 +158,42 @@ def compute_expert_weights_with_dselect(params, name='dselect_gating'):
             selector_weights * selector_outputs, axis=0)
     return expert_weights, selector_outputs
 
+def compute_example_conditioned_expert_weights_with_dselect(dense, params, name='dselect_example_conditioned_gating'):
+    with tf.compat.v1.variable_scope(name):
+        num_binary = math.ceil(math.log2(params['num_of_expert']))
+        z_logits = tf.keras.layers.Dense(params['k'] * num_binary,
+            kernel_initializer=tf.keras.initializers.RandomUniform(-1.0 / 100, 1.0 / 100),
+            bias_initializer=tf.keras.initializers.RandomUniform(-1.0 / 100, 1.0 / 100))
+        w_logits = tf.keras.layers.Dense(params['k'],
+            kernel_initializer=tf.keras.initializers.RandomUniform(),
+            bias_initializer=tf.keras.initializers.RandomUniform())
+        binary_matrix = np.array([list(np.binary_repr(val, width=num_binary))
+            for val in range(params['num_of_expert'])]).astype(bool)
+        # A constant tensor = binary_matrix, with an additional dimension for
+        # broadcasting.
+        binary_codes = tf.tile(tf.expand_dims(tf.expand_dims(
+            tf.constant(binary_matrix, dtype=bool), axis=0), axis=0), [tf.shape(dense)[0], params['k'], 1, 1])
+        
+        sample_logits = tf.reshape(
+            z_logits(dense),
+            [-1, params['k'], 1, num_binary])
+        sample_logits = tf.tile(sample_logits, [1, 1, params['num_of_expert'], 1])
+        smooth_step_activations = smooth_step(sample_logits)
+        # Shape = (batch_size, k, num_experts).
+        selector_outputs = tf.math.reduce_prod(
+            tf.where(
+                binary_codes, smooth_step_activations,
+                1 - smooth_step_activations), 3)
+        # Weights for the single-expert selectors.
+        # Shape = (batch_size, k, 1).
+        selector_weights = tf.expand_dims(w_logits(dense), 2)
+        selector_weights = tf.nn.softmax(selector_weights, axis=1)
+        # Sum over the single-expert selectors. Shape = (batch_size, num_experts).
+        expert_weights = tf.math.reduce_sum(
+            selector_weights * selector_outputs, axis=1)
+
+    return expert_weights, selector_outputs
+
 # mean pooling, max pooling
 def seq_pooling_layer(features, params, emb_dict, mode):
     for s in params['seq_names']:
@@ -311,13 +347,17 @@ def sparse_moe_layer_with_dselect(dense, params, mode, scope):
             out = stack_dense_layer(dense, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='Expert_{}'.format(n))
             outputs.append(out)
 
-        expert_weights, selector_outputs = compute_expert_weights_with_dselect(params) # (num_experts, ), (k, num_experts)
+        if params['example_conditioned']:
+            expert_weights, selector_outputs = compute_example_conditioned_expert_weights_with_dselect(dense, params) # (b, num_experts), (b, k, num_experts)
+            expert_output = tf.math.accumulate_n([tf.reshape(expert_weights[:, i], [-1, 1]) * outputs[i] for i in range(params['num_of_expert'])])
+        else:
+            expert_weights, selector_outputs = compute_expert_weights_with_dselect(params) # (num_experts, ), (k, num_experts)
+            expert_output = tf.math.accumulate_n([expert_weights[i] * outputs[i] for i in range(params['num_of_expert'])])
+        
+        expert_output = stack_dense_layer(expert_output, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='CTR_Task_Dense')
+
         loss = _add_entropy_regularization_loss(params, selector_outputs)
         tf.add_to_collection('all_loss_entropy', loss)
-
-        expert_output = tf.math.accumulate_n(
-          [expert_weights[i] * outputs[i] for i in range(params['num_of_expert'])])
-        expert_output = stack_dense_layer(expert_output, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='CTR_Task_Dense')
     return expert_output
 
 def mmoe_layer(dense, params, mode, scope):

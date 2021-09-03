@@ -77,6 +77,7 @@ build_estimator = build_estimator_helper(
                    'emb_dim': AMAZON_EMB_DIM,
                    'model_name': 'usersparseexpert',
                    'use_dselect': True,
+                   'example_conditioned': True, # used when use_dselect is True
                    'data_name': 'amazon',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             },
@@ -97,6 +98,7 @@ build_estimator = build_estimator_helper(
                    'emb_dim': ML_EMB_DIM,
                    'model_name': 'usersparseexpert',
                    'use_dselect': True,
+                   'example_conditioned': True, # used when use_dselect is True
                    'data_name': 'movielens',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             }
