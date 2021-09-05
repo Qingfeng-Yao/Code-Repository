@@ -28,19 +28,26 @@ def stack_dense_layer(inputs, hidden_units, dropout_rate, batch_norm, mode, scop
             outputs += inputs
     return outputs
 
-def attention(queries, keys, params, keys_id=None, queries_id=None, scope='multihead_attention'):
+def attention(queries, keys, params, keys_id=None, queries_id=None, values=None, scope='multihead_attention'):
     with tf.compat.v1.variable_scope(scope):
         query_len = tf.shape(queries)[1]  
         key_len = tf.shape(keys)[1] 
 
         queries_2d = tf.reshape(queries, [-1, queries.get_shape().as_list()[-1]])
         keys_2d = tf.reshape(keys, [-1, keys.get_shape().as_list()[-1]])
+        if values is not None:
+            value_len = tf.shape(values)[1] 
+            values_2d = tf.reshape(values, [-1, values.get_shape().as_list()[-1]])
         Q = tf.layers.dense(queries_2d, params['attention_hidden_unit'], activation = tf.nn.relu, name = 'attention_Q')  
         Q = tf.reshape(Q, [-1, tf.shape(queries)[1], Q.get_shape().as_list()[-1]])
         K = tf.layers.dense(keys_2d, params['attention_hidden_unit'], activation = tf.nn.relu, name = 'attention_K')  
         K = tf.reshape(K, [-1, tf.shape(keys)[1], K.get_shape().as_list()[-1]])
-        V = tf.layers.dense(keys_2d, params['emb_dim'], activation = tf.nn.relu, name = 'attention_V')  
-        V = tf.reshape(V, [-1, tf.shape(keys)[1], V.get_shape().as_list()[-1]])
+        if values is not None:
+            V = tf.layers.dense(values_2d, params['emb_dim'], activation = tf.nn.relu, name = 'attention_V')  
+            V = tf.reshape(V, [-1, tf.shape(values)[1], V.get_shape().as_list()[-1]])
+        else:
+            V = tf.layers.dense(keys_2d, params['emb_dim'], activation = tf.nn.relu, name = 'attention_V')  
+            V = tf.reshape(V, [-1, tf.shape(keys)[1], V.get_shape().as_list()[-1]])
 
         if params['num_heads'] > 1:
             Q_ = tf.concat(tf.split(Q, params['num_heads'], axis=2), axis=0)  
@@ -60,10 +67,11 @@ def attention(queries, keys, params, keys_id=None, queries_id=None, scope='multi
             outputs = outputs * (K_.get_shape().as_list()[-1] ** (-0.5))
 
         # key Masking
-        key_masks = tf.not_equal( keys_id, 0 )
-        key_masks = tf.tile(tf.reshape(key_masks, [-1, 1, key_len]), [params['num_heads'], query_len, 1])
-        paddings = tf.fill(tf.shape(outputs), tf.constant(-2 ** 32 + 1, dtype=tf.float32))
-        outputs = tf.where(key_masks, outputs, paddings)
+        if keys_id is not None:
+            key_masks = tf.not_equal( keys_id, 0 )
+            key_masks = tf.tile(tf.reshape(key_masks, [-1, 1, key_len]), [params['num_heads'], query_len, 1])
+            paddings = tf.fill(tf.shape(outputs), tf.constant(-2 ** 32 + 1, dtype=tf.float32))
+            outputs = tf.where(key_masks, outputs, paddings)
 
         # Activation
         outputs = tf.nn.softmax(outputs)
@@ -320,6 +328,29 @@ def moe_layer(dense, params, mode, scope):
 
         expert_output = tf.reduce_sum(tf.multiply(tf.expand_dims(gate_weights, -1), tf.stack(values=outputs, axis=1)), axis=1)
         expert_output = stack_dense_layer(expert_output, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='CTR_Task_Dense')
+        
+    return expert_output
+
+def virtual_moe_layer(dense, params, mode, emb_dict, scope):
+    with tf.compat.v1.variable_scope(scope):
+        outputs = []
+        user_qs = []
+        for n in range(params['num_of_expert']):
+            user_q = tf.compat.v1.get_variable('user_q_{}'.format(n), [1, params['emb_dim']], initializer=tf.keras.initializers.RandomUniform(), trainable=True)
+            user_q = tf.tile(user_q, [tf.shape(dense)[0], 1])
+            user_qs.append(user_q)
+            user_q = tf.expand_dims(user_q, 1)  
+            att_emb = attention(user_q, dense, params, scope='att_{}'.format(n)) 
+            att_emb = tf.reshape(att_emb, [-1, params['emb_dim']])
+
+            out = stack_dense_layer(att_emb, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='Expert_{}'.format(n))
+            outputs.append(out)
+        gate_q = emb_dict['item_emb']
+        gate_q = tf.expand_dims(gate_q, 1)  
+        final_att_emb = attention(gate_q, tf.stack(user_qs, axis=1), params, values=tf.stack(outputs, axis=1))
+        final_att_emb = tf.reshape(final_att_emb, [-1, params['emb_dim']])
+
+        expert_output = stack_dense_layer(final_att_emb, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='CTR_Task_Dense')
         
     return expert_output
 

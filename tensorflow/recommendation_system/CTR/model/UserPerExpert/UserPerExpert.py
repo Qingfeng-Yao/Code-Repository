@@ -1,9 +1,9 @@
 import tensorflow as tf
 
 from const import *
-from model.MOE.preprocess import build_features
+from model.UserPerExpert.preprocess import build_features
 from utils import build_estimator_helper, tf_estimator_model
-from layers import seq_pooling_layer, target_attention_layer, moe_layer
+from layers import seq_pooling_layer, target_attention_layer, virtual_moe_layer, stack_dense_layer
 
 @tf_estimator_model
 def model_fn_varlen(features, labels, mode, params):
@@ -33,19 +33,23 @@ def model_fn_varlen(features, labels, mode, params):
     seq_pooling_layer(features, params, emb_dict, mode)
     target_attention_layer(features, params, emb_dict)
 
-    # Concat features
-    concat_features = []
+    # Stack and concat features
+    input_features = []
     for f in params['input_features']:
-        concat_features.append(emb_dict[f])
-    fc = tf.concat(concat_features, axis=1)
+        input_features.append(emb_dict[f])
+    fc_main = tf.stack(input_features, axis=1)
+    fc_bias = tf.concat(input_features, axis=1)
 
     # ---dnn layer---
-    dense = moe_layer(fc, params, mode, scope='main_dense_moe')
+    main_net = virtual_moe_layer(fc_main, params, mode, emb_dict, scope='main_dense_moe_virtual')
+    bias_net = stack_dense_layer(fc_bias, params['hidden_units'], params['dropout_rate'], params['batch_norm'],
+                              mode, scope='bias_dense')
 
     # ---logits layer---
-    y = tf.layers.dense(dense, units=1, name='logit_net')
+    main_y = tf.layers.dense(main_net, units=1, name='main_logit_net')
+    bias_y = tf.layers.dense(bias_net, units=1, name='bias_logit_net')
 
-    return y
+    return main_y+bias_y
 
 
 build_estimator = build_estimator_helper(
@@ -66,10 +70,10 @@ build_estimator = build_estimator_helper(
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 50,
                    'sparse_emb_dim': 128,
-                   'emb_dim': AMAZON_EMB_DIM,
-                   'model_name': 'moe',
+                   'emb_dim': 128,
+                   'model_name': 'userperexpert',
                    'data_name': 'amazon',
-                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
+                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb'] # 每个element表示一个field，对应的嵌入尺寸一致
             },
         'movielens':{ 'dropout_rate' : 0.2,
                    'batch_norm' : True,
@@ -83,10 +87,10 @@ build_estimator = build_estimator_helper(
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 50,
                    'sparse_emb_dim': 128,
-                   'emb_dim': ML_EMB_DIM,
-                   'model_name': 'moe',
+                   'emb_dim': 128,
+                   'model_name': 'userperexpert',
                    'data_name': 'movielens',
-                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
+                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb'] # 每个element表示一个field，对应的嵌入尺寸一致
             }
     }
 )

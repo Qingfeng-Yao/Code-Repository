@@ -30,7 +30,7 @@
 - 模型预测: 调用estimator.predict方法
 - 具体模型(指标AUC)
     - DIN: 0.7370/0.9137
-    - MOE: 0.7475/0.9285
+    - MOE: 0.7800/0.9440
     - Bias: 0.7577/0.9328
     - (UserInput: 0.7648/0.9329)
     - (UserLoss: 0.7584/0.9314)
@@ -39,9 +39,9 @@
     - UserCluster: 0.7268/(bz=16)
         - +ClusterLoss: 0.6973
         - +Adversarial: 
-    - UserSparseExpert: 0.7411/0.9403
+    - UserSparseExpert: 0.7808/0.9403
         - +DSelect k(static): 0.7572
-        - +DSelect k(per example): 
+        - +DSelect k(per example): 0.7450
     - UserPerExpert
 
     

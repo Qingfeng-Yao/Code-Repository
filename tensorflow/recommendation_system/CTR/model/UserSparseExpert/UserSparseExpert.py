@@ -71,12 +71,12 @@ build_estimator = build_estimator_helper(
                    'cate_count': AMAZON_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 50,
-                   'k': 20, # top k ; should <= num_of_expert
+                   'k': 40, # top k ; should <= num_of_expert
                    'loss_coef': 1e-2,
                    'sparse_emb_dim': 128,
                    'emb_dim': AMAZON_EMB_DIM,
                    'model_name': 'usersparseexpert',
-                   'use_dselect': True,
+                   'use_dselect': False,
                    'example_conditioned': True, # used when use_dselect is True
                    'data_name': 'amazon',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
@@ -92,12 +92,12 @@ build_estimator = build_estimator_helper(
                    'cate_count': ML_CATE_COUNT,
                    'seq_names': ['item', 'cate'],
                    'num_of_expert': 50,
-                   'k': 20, # top k ; should <= num_of_expert
+                   'k': 40, # top k ; should <= num_of_expert
                    'loss_coef': 1e-2,
                    'sparse_emb_dim': 128,
                    'emb_dim': ML_EMB_DIM,
                    'model_name': 'usersparseexpert',
-                   'use_dselect': True,
+                   'use_dselect': False,
                    'example_conditioned': True, # used when use_dselect is True
                    'data_name': 'movielens',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
