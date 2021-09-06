@@ -57,7 +57,7 @@ def main(args):
 if __name__ =='__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type = str, help = 'which model to use: DIN | MOE | Bias | UserLoss | UserInput | Star | UserCluster | UserSparseExpert | UserPerExpert', default='DIN')
+    parser.add_argument('--model', type = str, help = 'which model to use: DIN | MOE | Bias | UserLoss | UserInput | UserCluster | UserSparseExpert | UserPerExpert', default='DIN')
     parser.add_argument('--dataset', type=str, help= 'which dataset to use: amazon | movielens', default='amazon') # amazon对应的batch_size为512，movielens对应的batch_size为256
     parser.add_argument('--cuda', type=str, help= 'which gpu to use', default='1')
     

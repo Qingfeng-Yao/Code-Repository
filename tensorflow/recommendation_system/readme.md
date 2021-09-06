@@ -31,17 +31,12 @@
 - 具体模型(指标AUC)
     - DIN: 0.7370/0.9137
     - MOE: 0.7800/0.9440
-    - Bias: 0.7577/0.9328
-    - (UserInput: 0.7648/0.9329)
-    - (UserLoss: 0.7584/0.9314)
-    - (Star: 0.7434/0.9291)
-    - (UserRecognition: 0.6869)
-    - UserCluster: 0.7268/(bz=16)
-        - +ClusterLoss: 0.6973
-        - +Adversarial: 
-    - UserSparseExpert: 0.7808/0.9403
-        - +DSelect k(static): 0.7572
-        - +DSelect k(per example): 0.7450
+    - Bias: 0.7796/0.9435
+    - (UserInput)
+    - (UserLoss)
+    - UserSparseExpert: 0.7808/0.9417
+        - +DSelect k(static): 0.7596
+        - +DSelect k(per example): 0.7369
     - UserPerExpert
 
     
