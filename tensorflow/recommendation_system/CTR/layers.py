@@ -334,11 +334,14 @@ def moe_layer(dense, params, mode, scope):
 def virtual_moe_layer(dense, params, mode, emb_dict, scope):
     with tf.compat.v1.variable_scope(scope):
         outputs = []
-        user_qs = []
+        user_qs = tf.compat.v1.get_variable(
+            name="user_q_embeddings",
+            shape=[params['num_of_expert'], params['emb_dim']],
+            initializer=tf.truncated_normal_initializer(stddev=0.001)
+        )
         for n in range(params['num_of_expert']):
-            user_q = tf.compat.v1.get_variable('user_q_{}'.format(n), [1, params['emb_dim']], initializer=tf.keras.initializers.RandomUniform(), trainable=True)
-            user_q = tf.tile(user_q, [tf.shape(dense)[0], 1])
-            user_qs.append(user_q)
+            index = tf.tile(tf.constant([n]), [tf.shape(dense)[0]])
+            user_q = tf.nn.embedding_lookup(user_qs, index)
             user_q = tf.expand_dims(user_q, 1)  
             att_emb = attention(user_q, dense, params, scope='att_{}'.format(n)) 
             att_emb = tf.reshape(att_emb, [-1, params['emb_dim']])
@@ -347,7 +350,8 @@ def virtual_moe_layer(dense, params, mode, emb_dict, scope):
             outputs.append(out)
         gate_q = emb_dict['item_emb']
         gate_q = tf.expand_dims(gate_q, 1)  
-        final_att_emb = attention(gate_q, tf.stack(user_qs, axis=1), params, values=tf.stack(outputs, axis=1))
+        user_qs = tf.expand_dims(user_qs, 0) 
+        final_att_emb = attention(gate_q, tf.tile(user_qs, [tf.shape(dense)[0], 1, 1]), params, values=tf.stack(outputs, axis=1))
         final_att_emb = tf.reshape(final_att_emb, [-1, params['emb_dim']])
 
         expert_output = stack_dense_layer(final_att_emb, params['hidden_units'], params['dropout_rate'], params['batch_norm'], mode, scope='CTR_Task_Dense')
