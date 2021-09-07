@@ -1,0 +1,12 @@
+torch==1.4.0
+torchtext==0.6.0
+tensorboard==2.5.0
+CairoSVG==2.5.2
+ortools==9.0.9048
+scipy==1.5.4
+pandas==1.1.5
+matplotlib==3.3.4
+numpy==1.19.5
+grinpy==19.7a0
+networkx==2.5.1
+pytorch-nlp==0.4.1
