@@ -35,8 +35,8 @@
     - (UserInput)
     - (UserLoss)
     - UserSparseExpert: 0.7843
-        - +DSelect k(static): 0.7596
-        - +DSelect k(per example): 0.7369
+        - (+DSelect k(static))
+        - (+DSelect k(per example))
     - UserPerExpert: 0.7857
     
 
