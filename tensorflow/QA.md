@@ -17,3 +17,5 @@
     - 可能原因在于出现None，即序列维度，这个数值可通过tf.shape来获取
 - `with tf.Session() as sess:`遇到问题`InvalidArgumentError: device CUDA:0 not supported by XLA service while setting up XLA_GPU_JIT device number 0`
     - gpu 0上内存不足
+- `dependency_optimizer failed: Deadline exceeded`
+    - 模型太大
