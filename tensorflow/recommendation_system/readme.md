@@ -1,9 +1,11 @@
 ## 参考资料
+### CTR
 - [DSXiangLi/CTR](https://github.com/DSXiangLi/CTR)
 - [sparse gate](https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/utils/expert_utils.py)
 - [DSelect k](https://github.com/google-research/google-research/tree/master/dselect_k_moe)
 
 ## 参考论文
+### CTR
 - 2017 | ICLR | Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer | Google
 - 2018 | KDD | Deep Interest Network for Click-Through Rate Prediction | Alibaba
 - 2018 | KDD | Modeling Task Relationships in Multi-task Learning with Multi-gate Mixture-of-Experts | Google
@@ -12,15 +14,18 @@
 - 2021 | DSelect-k: Differentiable Selection in the Mixture of Experts with Applications to Multi-Task Learning | Google
 
 ## 环境配置
-- `python3.6`; `requirements.txt`
-- `conda install cudatoolkit=10.0`
-- `conda install cudnn -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/linux-64/`
+### CTR
+- `python3.6`; `CTR/requirements.txt`
+    - `conda install cudatoolkit=10.0`
+    - `conda install cudnn -c https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/linux-64/`
+    - 可设置conda环境(ctrtf)
 
 ## 任务
 ### CTR
 #### 数据集
 - amazon(eletronics)
 - movielens
+- 具体的数据集处理过程及相关统计信息可参见`CTR/data`
 
 #### 模型
 - 使用tf.estimator.Estimator，参数model_fn指明模型(tf.estimator.EstimatorSpec)，参数config指明配置(tf.estimator.RunConfig)
@@ -37,7 +42,7 @@
     - UserSparseExpert: 0.7843/0.9439
         - (+DSelect k(static))
         - (+DSelect k(per example))
-    - UserPerExpert: 0.7857/
+    - UserPerExpert: 0.7857/0.9437
     
 
     
