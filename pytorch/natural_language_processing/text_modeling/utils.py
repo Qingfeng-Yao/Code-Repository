@@ -13,7 +13,7 @@ from radam import RAdam, AdamW
 
 DEBUG_LEVEL = 0
 PARAM_CONFIG_FILE = "param_config.pik"
-CUDA_ID = "cuda:0"
+CUDA_ID = "cuda:1"
 
 OPTIMIZER_SGD = 0
 OPTIMIZER_ADAM = 1

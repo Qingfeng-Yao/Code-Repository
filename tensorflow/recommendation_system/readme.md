@@ -34,10 +34,10 @@
     - Bias: 0.7796/0.9435
     - (UserInput)
     - (UserLoss)
-    - UserSparseExpert: 0.7843
+    - UserSparseExpert: 0.7843/0.9439
         - (+DSelect k(static))
         - (+DSelect k(per example))
-    - UserPerExpert: 0.7857
+    - UserPerExpert: 0.7857/
     
 
     
