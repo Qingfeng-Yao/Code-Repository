@@ -70,4 +70,4 @@
     - auc: 0/74.22%, 1/59.90%, 2/58.05%, 3/75.24%, 4/71.05%, 5/77.78%
 - CVDD+imdb: `python3 main.py imdb cvdd_Net ../log/test_imdb ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
     - `--normal_class`ø…»°`0-1`
-    - auc: 0/, 1/
+    - auc: 0/46.44%, 1/56.27%
