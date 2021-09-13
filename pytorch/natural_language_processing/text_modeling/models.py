@@ -1,5 +1,6 @@
 import torch 
 import torch.nn as nn
+import torch.nn.functional as F 
 import torch.utils.data as data
 from torch.utils.tensorboard import SummaryWriter
 
@@ -19,6 +20,7 @@ from datasets.penntreebank import PennTreeBankDataset
 
 from rnn import LSTMModel
 from cnf import CNFLanguageModeling
+from df import DFModel
 
 class TaskTemplate:
 	
@@ -310,7 +312,9 @@ class TaskLanguageModeling(TaskTemplate):
 		x_in, x_length, x_channel_mask = self._preprocess_batch(batch)
 		if isinstance(self.model, LSTMModel):
 			return self._train_batch_rnn(x_in, x_length, x_channel_mask)
-		else:
+		elif isinstance(self.model, DFModel):
+			return self._train_batch_df(x_in, x_length, x_channel_mask)
+		elif isinstance(self.model, CNFLanguageModeling):
 			return self._train_batch_flow(x_in, x_length, x_channel_mask, iteration=iteration)
 
 	def _train_batch_rnn(self, x_in, x_length, x_channel_mask, **kwargs):
@@ -318,6 +322,16 @@ class TaskLanguageModeling(TaskTemplate):
 		self.summary_dict["log_prob"].append(-logprob.mean().item())
 		self._ldj_per_layer_to_summary([details])
 		loss, _, _ = self._calc_loss(torch.zeros_like(logprob), -logprob, x_length)
+		return loss
+
+	def _train_batch_df(self, x_in, x_length, x_channel_mask, **kwargs):
+		vocab_dict = self.dataset_class.get_vocabulary()
+		x = F.one_hot(x_in, num_classes = len(vocab_dict)).float()
+		z = self.model(x, reverse=False)
+
+		base_log_probs_sm = torch.nn.functional.log_softmax(self.model.base_log_probs, dim=-1).to(x_in.device)
+		neglog_prob = -(z*base_log_probs_sm*x_channel_mask).sum(dim=[1,2])
+		loss, _, _ = self._calc_loss(torch.zeros_like(neglog_prob), neglog_prob, x_length)
 		return loss
 
 	def _train_batch_flow(self, x_in, x_length, x_channel_mask, iteration=0, **kwargs):
@@ -341,13 +355,25 @@ class TaskLanguageModeling(TaskTemplate):
 		x_in, x_length, x_channel_mask = self._preprocess_batch(batch)
 		if isinstance(self.model, LSTMModel):
 			return self._eval_batch_rnn(x_in, x_length, x_channel_mask)
-		else:
+		elif isinstance(self.model, DFModel):
+			return self._eval_batch_df(x_in, x_length, x_channel_mask)
+		elif isinstance(self.model, CNFLanguageModeling):
 			return self._eval_batch_flow(x_in, x_length, x_channel_mask, is_test=is_test)
 
 	def _eval_batch_rnn(self, x_in, x_length, x_channel_mask, **kwargs):
 		logprob, _ = self.model(x_in, reverse=False, length=x_length, channel_padding_mask=x_channel_mask)
 		loss, _, _ = self._calc_loss(torch.zeros_like(logprob), -logprob, x_length)
 		# print(loss.item())
+		return loss
+
+	def _eval_batch_df(self, x_in, x_length, x_channel_mask, **kwargs):
+		vocab_dict = self.dataset_class.get_vocabulary()
+		x = F.one_hot(x_in, num_classes = len(vocab_dict)).float()
+		z = self.model(x, reverse=False)
+
+		base_log_probs_sm = torch.nn.functional.log_softmax(self.model.base_log_probs, dim=-1).to(x_in.device)
+		neglog_prob = -(z*base_log_probs_sm*x_channel_mask).sum(dim=[1,2])
+		loss, _, _ = self._calc_loss(torch.zeros_like(neglog_prob), neglog_prob, x_length)
 		return loss
 
 	def _eval_batch_flow(self, x_in, x_length, x_channel_mask, is_test=False, **kwargs):
@@ -382,7 +408,8 @@ class TaskLanguageModeling(TaskTemplate):
 	def _preprocess_batch(self, batch):
 		if isinstance(batch, tuple):
 			x_in, x_length = batch
-			x_in = x_in[:,:x_length.max()]
+			if not isinstance(self.model, DFModel):
+				x_in = x_in[:,:x_length.max()]
 			x_channel_mask = create_channel_mask(x_length, max_len=x_in.size(1))
 		else:
 			x_in = batch
@@ -411,7 +438,8 @@ class TrainTemplate:
 
 	def __init__(self, model_params, optimizer_params, batch_size, checkpoint_path, debug=False, name_prefix="", multi_gpu=False):
 		self.batch_size = batch_size
-		self.name_prefix = name_prefix.strip() # Remove possible spaces. Name is used for creating default checkpoint path
+		model_name = get_param_val(model_params, "model_name", default_val="CNF")
+		self.name_prefix = name_prefix.strip()+model_name # Remove possible spaces. Name is used for creating default checkpoint path
 		self.model_params = model_params
 		self.optimizer_params = optimizer_params
 		## Load model
@@ -430,7 +458,7 @@ class TrainTemplate:
 		## Load task
 		self.task = self._create_task(model_params, debug=debug)
 		## Load optimizer and checkpoints
-		self._create_optimizer(optimizer_params)
+		self._create_optimizer(model_params, optimizer_params)
 		self._prepare_checkpoint(checkpoint_path)
 
 
@@ -444,9 +472,9 @@ class TrainTemplate:
 		raise NotImplementedError
 
 
-	def _create_optimizer(self, optimizer_params):
+	def _create_optimizer(self, model_params, optimizer_params):
 		parameters_to_optimize = self.model.parameters()
-		self.optimizer = create_optimizer_from_args(parameters_to_optimize, optimizer_params)
+		self.optimizer = create_optimizer_from_args(parameters_to_optimize, optimizer_params, model_params, self.model)
 		self.lr_scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, optimizer_params["lr_decay_step"], gamma=optimizer_params["lr_decay_factor"])
 		self.lr_minimum = optimizer_params["lr_minimum"]
 
@@ -722,6 +750,8 @@ class TrainLanguageModeling(TrainTemplate):
 			model = LSTMModel(num_classes=len(vocab_dict), vocab=vocab_torchtext, model_params=model_params)
 		elif model_name == "CNF":
 			model = CNFLanguageModeling(model_params=model_params, vocab_size=len(vocab_dict), vocab=vocab_torchtext, dataset_class=dataset_class)
+		elif model_name in ["DAF", "DBF"]:
+			model = DFModel(num_classes=len(vocab_dict), batch_size=self.batch_size, model_params=model_params, model_name=model_name)
 		return model
 
 	def _create_task(self, model_params, debug=False):

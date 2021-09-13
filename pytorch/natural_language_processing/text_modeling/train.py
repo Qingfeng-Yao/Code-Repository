@@ -44,7 +44,7 @@ def start_training(args):
 			args.debug = debug
 
 	# Setup training
-	model_params, optimizer_params = args_to_params(args) # make params to dict, set seed, model_params include prior distribution, cate encoding, scheduler
+	model_params, optimizer_params = args_to_params(args) # make params to dict, set seed, model_params include prior distribution, cate encoding, scheduler...
 	trainModule = TrainLanguageModeling(model_params=model_params,
 								optimizer_params=optimizer_params, 
 								batch_size=args.batch_size,
@@ -92,8 +92,8 @@ def start_training(args):
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
 	# model and dataset param; cuda is set in utils.py
-	parser.add_argument("--model_name", help="Name of model. Options: RNN(LSTM), CNF(Categorical Normalizing Flow)", type=str, default="CNF")
-	parser.add_argument("--dataset", help="Name of the dataset to train on. Options: penntreebank, text8, wikitext", type=str, default="penntreebank")
+	parser.add_argument("--model_name", help="Name of model. Options: RNN(LSTM), CNF(Categorical Normalizing Flow), DAF(Discrete autoregressive flows), DBF(Discrete bipartite flows)", type=str, default="CNF")
+	parser.add_argument("--dataset", help="Name of the dataset to train on. Options: penntreebank, text8", type=str, default="penntreebank")
 	parser.add_argument("--batch_size", help="Batch size used during training", type=int, default=64)
 	parser.add_argument("--max_seq_len", help="Maximum sequence length of training sentences.", type=int, default=256)
 	
@@ -159,6 +159,11 @@ if __name__ == "__main__":
 	parser.add_argument("--coupling_num_mixtures", help="Number of mixtures used in the coupling layers.", type=int, default=64)
 	parser.add_argument("--coupling_dropout", help="Dropout to use in the networks.", type=float, default=0.0)
 	parser.add_argument("--coupling_input_dropout", help="Input dropout rate to use in the networks.", type=float, default=0.0)
+
+	# discrete flow parameters
+	parser.add_argument("--discrete_num_flows", help="Number of flow steps. This is different to the number of layers used inside each flow.", type=int, default=1)
+	parser.add_argument("--temperature", help="Used for the straight-through gradient estimator.", type=float, default=0.1)
+	parser.add_argument("--discrete_nh", help="Number of hidden units per layer.", type=int, default=8)
 	
 	# Parameter for schedulers
 	default_vals = {"beta": ("exponential", 1.0, 2.0, 5000, 2, 0)}

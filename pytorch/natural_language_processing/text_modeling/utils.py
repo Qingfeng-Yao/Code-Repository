@@ -96,6 +96,13 @@ def args_to_params(args):
         }
     }
     model_params["categ_encoding"] = categ_encoding_params
+	
+    discrete_params = {
+        "num_flows": getattr(args, "discrete_num_flows"),
+        "temperature": getattr(args, "temperature"),
+        "nh": getattr(args, "discrete_nh")
+    }
+    model_params["discrete_flow"] = discrete_params
 
     sched_params = {}
     sched_param_names = ["beta"]
@@ -117,39 +124,44 @@ def args_to_params(args):
     
     return model_params, optimizer_params
 
-def create_optimizer_from_args(parameters_to_optimize, optimizer_params):
-	if optimizer_params["optimizer"] == OPTIMIZER_SGD:
-		optimizer = torch.optim.SGD(parameters_to_optimize, 
-									lr=optimizer_params["learning_rate"], 
-									weight_decay=optimizer_params["weight_decay"],
-									momentum=optimizer_params["momentum"])
-	elif optimizer_params["optimizer"] == OPTIMIZER_ADAM:
-		optimizer = torch.optim.Adam(parameters_to_optimize, 
-									 lr=optimizer_params["learning_rate"],
-									 betas=(optimizer_params["beta1"], optimizer_params["beta2"]),
-									 weight_decay=optimizer_params["weight_decay"])
-	elif optimizer_params["optimizer"] == OPTIMIZER_ADAMAX:
-		optimizer = torch.optim.Adamax(parameters_to_optimize, 
-									   lr=optimizer_params["learning_rate"],
-									   weight_decay=optimizer_params["weight_decay"])
-	elif optimizer_params["optimizer"] == OPTIMIZER_RMSPROP:
-		optimizer = torch.optim.RMSprop(parameters_to_optimize, 
+def create_optimizer_from_args(parameters_to_optimize, optimizer_params, model_params, model):
+	model_name = get_param_val(model_params, "model_name", default_val="CNF")
+	if model_name in ["DAF", "DBF"]:
+		optimizer = torch.optim.Adam([{"params": parameters_to_optimize, "lr": optimizer_params["learning_rate"]},
+									{"params": model.base_log_probs, "lr": optimizer_params["learning_rate"]}])
+	else:
+		if optimizer_params["optimizer"] == OPTIMIZER_SGD:
+			optimizer = torch.optim.SGD(parameters_to_optimize, 
+										lr=optimizer_params["learning_rate"], 
+										weight_decay=optimizer_params["weight_decay"],
+										momentum=optimizer_params["momentum"])
+		elif optimizer_params["optimizer"] == OPTIMIZER_ADAM:
+			optimizer = torch.optim.Adam(parameters_to_optimize, 
+										lr=optimizer_params["learning_rate"],
+										betas=(optimizer_params["beta1"], optimizer_params["beta2"]),
+										weight_decay=optimizer_params["weight_decay"])
+		elif optimizer_params["optimizer"] == OPTIMIZER_ADAMAX:
+			optimizer = torch.optim.Adamax(parameters_to_optimize, 
 										lr=optimizer_params["learning_rate"],
 										weight_decay=optimizer_params["weight_decay"])
-	elif optimizer_params["optimizer"] == OPTIMIZER_RADAM:
-		optimizer = RAdam(parameters_to_optimize, 
-						  lr=optimizer_params["learning_rate"],
-						  betas=(optimizer_params["beta1"], optimizer_params["beta2"]),
-						  weight_decay=optimizer_params["weight_decay"])
-	elif optimizer_params["optimizer"] == OPTIMIZER_ADAM_WARMUP:
-		optimizer = AdamW(parameters_to_optimize, 
-						  lr=optimizer_params["learning_rate"],
-						  weight_decay=optimizer_params["weight_decay"],
-						  betas=(optimizer_params["beta1"], optimizer_params["beta2"]),
-						  warmup=optimizer_params["warmup"])
-	else:
-		print("[!] ERROR: Unknown optimizer: " + str(optimizer_params["optimizer"]))
-		sys.exit(1)
+		elif optimizer_params["optimizer"] == OPTIMIZER_RMSPROP:
+			optimizer = torch.optim.RMSprop(parameters_to_optimize, 
+											lr=optimizer_params["learning_rate"],
+											weight_decay=optimizer_params["weight_decay"])
+		elif optimizer_params["optimizer"] == OPTIMIZER_RADAM:
+			optimizer = RAdam(parameters_to_optimize, 
+							lr=optimizer_params["learning_rate"],
+							betas=(optimizer_params["beta1"], optimizer_params["beta2"]),
+							weight_decay=optimizer_params["weight_decay"])
+		elif optimizer_params["optimizer"] == OPTIMIZER_ADAM_WARMUP:
+			optimizer = AdamW(parameters_to_optimize, 
+							lr=optimizer_params["learning_rate"],
+							weight_decay=optimizer_params["weight_decay"],
+							betas=(optimizer_params["beta1"], optimizer_params["beta2"]),
+							warmup=optimizer_params["warmup"])
+		else:
+			print("[!] ERROR: Unknown optimizer: " + str(optimizer_params["optimizer"]))
+			sys.exit(1)
 	return optimizer
 
 def get_param_val(param_dict, key, default_val=None, allow_default=True, error_location="", warning_if_default=True):
