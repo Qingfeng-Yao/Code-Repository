@@ -57,12 +57,22 @@ class Newsgroups20_Dataset(TorchnlpDataset):
                 row['label'] = torch.tensor(1)
             row['text'] = row['text'].lower()
 
+        test_n_idx = [] # subsetting test_set to selected normal classes
+        test_a_idx = [] # subsetting test_set to selected anomalous classes
         for i, row in enumerate(self.test_set):
+            if row['label'] in self.normal_classes:
+                test_n_idx.append(i)
+            else:
+                test_a_idx.append(i)
             row['label'] = torch.tensor(0) if row['label'] in self.normal_classes else torch.tensor(1)
             row['text'] = row['text'].lower()
 
         # Subset train_set to normal class
         self.train_set = Subset(self.train_set, train_idx_normal)
+        # Subset test_set to selected normal classes
+        self.test_n_set = Subset(self.test_set, test_n_idx)
+        # Subset test_set to selected anomalous classes
+        self.test_a_set = Subset(self.test_set, test_a_idx)
 
         # Make corpus and set encoder
         text_corpus = [row['text'] for row in datasets_iterator(self.train_set, self.test_set)]

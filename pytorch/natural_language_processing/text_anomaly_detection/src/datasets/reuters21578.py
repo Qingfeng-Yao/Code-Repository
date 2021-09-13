@@ -58,12 +58,16 @@ class Reuters_Dataset(TorchnlpDataset):
             row['text'] = row['text'].lower()
 
         test_idx = []  # for subsetting test_set to selected normal and anomalous classes
+        test_n_idx = [] # subsetting test_set to selected normal classes
+        test_a_idx = [] # subsetting test_set to selected anomalous classes
         for i, row in enumerate(self.test_set):
             if any(label in self.normal_classes for label in row['label']) and (len(row['label']) == 1):
                 test_idx.append(i)
+                test_n_idx.append(i)
                 row['label'] = torch.tensor(0)
             elif any(label in self.outlier_classes for label in row['label']) and (len(row['label']) == 1):
                 test_idx.append(i)
+                test_a_idx.append(i)
                 row['label'] = torch.tensor(1)
             else:
                 row['label'] = torch.tensor(1)
@@ -73,6 +77,10 @@ class Reuters_Dataset(TorchnlpDataset):
         self.train_set = Subset(self.train_set, train_idx_normal)
         # Subset test_set to selected normal and anomalous classes
         self.test_set = Subset(self.test_set, test_idx)
+        # Subset test_set to selected normal classes
+        self.test_n_set = Subset(self.test_set, test_n_idx)
+        # Subset test_set to selected anomalous classes
+        self.test_a_set = Subset(self.test_set, test_a_idx)
 
         # Make corpus and set encoder
         text_corpus = [row['text'] for row in datasets_iterator(self.train_set, self.test_set)]
