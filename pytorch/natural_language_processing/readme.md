@@ -2,6 +2,7 @@
 ### text modeling
 - [phlippe/CategoricalNF](https://github.com/phlippe/CategoricalNF)
 - [TrentBrick/PyTorchDiscreteFlows](https://github.com/TrentBrick/PyTorchDiscreteFlows)
+- [google/edward2](https://github.com/google/edward2)
 
 ### text anomaly detection
 - [lukasruff/CVDD-PyTorch](https://github.com/lukasruff/CVDD-PyTorch)
@@ -35,28 +36,40 @@
 
 #### 模型
 - LSTM
+    - 嵌入层: 从离散到连续
+    - 时间嵌入层: 在原始嵌入上扩充嵌入维度
+    - LSTM网络
+    - 输出层: 输出维度为词汇表大小的线性层
+        - LSTM网络经输出层得到的概率为下一个token的预测概率
+        - 第一个token的预测概率由初始state向量经输出层得到
 - Categorical Normalizing Flow
+    - 编码层: 从先验分布中采样数据并进行变换，并以离散数据的嵌入控制变换的参数
+    - 激活层: 变换的参数为可学习参数
+    - 自回归混合耦合层
 - Discrete Flows: 
     - Discrete autoregressive flows
     - Discrete bipartite flows
+    - 对输入均进行one-hot编码，然后DAF使用MADE变换，DBF使用恒等变换
 
 #### 相关执行命令
+- 统一实验设置: use_multi_gpu/False, restart/False, checkpoint_path/None, load_config/False, no_model_checkpoints/False, only_eval/False, cluster/True, debug/False, clean_up/False
+- 指标: 测试集上的负对数似然(test bpd), 生成一个序列所需要的时间(generate, 单位s, PTB对应序列长度为288, text8对应序列长度为256)
 - PTB+CNF: `python3 train.py --dataset penntreebank --model_name CNF --max_iterations 25000 --eval_freq 500 --max_seq_len 288 --batch_size 128 --encoding_dim 3 --coupling_hidden_layers 1 --coupling_num_mixtures 51 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --optimizer 4 --learning_rate 7.5e-4 --cluster`
-    - test bpd: 1.26
+    - test bpd: 1.26, generate: 
 - PTB+RNN: `python3 train.py --dataset penntreebank --model_name RNN --max_iterations 25000 --eval_freq 500 --max_seq_len 288 --batch_size 128 --encoding_dim 3 --coupling_hidden_layers 1 --coupling_num_mixtures 51 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --optimizer 4 --learning_rate 7.5e-4 --cluster`
     - test bpd: 1.273 
-- PTB+DAF: `python3 train.py --dataset penntreebank --model_name DAF --max_iterations 25000 --eval_freq 500 --max_seq_len 288 --batch_size 128 --discrete_num_flows 1 --temperature 0.1 --discrete_nh 1024 --learning_rate 7.5e-4 --cluster`
-    - test bpd: 4.034
-- PTB+DBF: `python3 train.py --dataset penntreebank --model_name DBF --max_iterations 25000 --eval_freq 500 --max_seq_len 288 --batch_size 128 --discrete_num_flows 1 --temperature 0.1 --discrete_nh 1024 --learning_rate 7.5e-4 --cluster`
-    - test bpd: 3.954
+- PTB+DAF: `python3 train.py --dataset penntreebank --model_name DAF --max_iterations 25000 --eval_freq 500 --max_seq_len 288 --batch_size 128 --discrete_num_flows 1 --temperature 0.1 --discrete_nh 512 --learning_rate 7.5e-4 --cluster`
+    - test bpd: 4.033
+- PTB+DBF: `python3 train.py --dataset penntreebank --model_name DBF --max_iterations 25000 --eval_freq 500 --max_seq_len 288 --batch_size 128 --discrete_num_flows 1 --temperature 0.1 --discrete_nh 512 --learning_rate 7.5e-4 --cluster`
+    - test bpd: 4.073
 - text8+CNF: `python3 train.py --dataset text8 --model_name CNF --max_iterations 100000 --max_seq_len 256 --batch_size 128 --encoding_dim 3 --coupling_hidden_layers 2 --coupling_num_mixtures 27 --coupling_dropout 0.0 --coupling_input_dropout 0.05 --optimizer 4 --learning_rate 7.5e-4 --cluster`
     - test bpd: 1.448
 - text8+RNN: `python3 train.py --dataset text8 --model_name RNN --max_iterations 100000 --max_seq_len 256 --batch_size 128 --encoding_dim 3 --coupling_hidden_layers 2 --coupling_num_mixtures 27 --coupling_dropout 0.0 --coupling_input_dropout 0.05 --optimizer 4 --learning_rate 7.5e-4 --cluster`
     - test bpd: 1.435 
-- text8+DAF: `python3 train.py --dataset text8 --model_name DAF --max_iterations 100000 --max_seq_len 256 --batch_size 128 --discrete_num_flows 2 --temperature 0.1 --discrete_nh 1024 --learning_rate 7.5e-4 --cluster`
+- text8+DAF: `python3 train.py --dataset text8 --model_name DAF --max_iterations 100000 --max_seq_len 256 --batch_size 128 --discrete_num_flows 1 --temperature 0.1 --discrete_nh 512 --learning_rate 7.5e-4 --cluster`
     - test bpd: 4.125
-- text8+DBF: `python3 train.py --dataset text8 --model_name DBF --max_iterations 100000 --max_seq_len 256 --batch_size 128 --discrete_num_flows 2 --temperature 0.1 --discrete_nh 1024 --learning_rate 7.5e-4 --cluster`
-    - test bpd: 4.229
+- text8+DBF: `python3 train.py --dataset text8 --model_name DBF --max_iterations 100000 --max_seq_len 256 --batch_size 128 --discrete_num_flows 1 --temperature 0.1 --discrete_nh 512 --learning_rate 7.5e-4 --cluster`
+    - test bpd: 4.411
 
 ### text anomaly detection
 #### 数据集

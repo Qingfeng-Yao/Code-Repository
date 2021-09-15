@@ -1,26 +1,8 @@
-"""
-author: trentbrick
-Code taken from: https://github.com/google/edward2/blob/master/edward2/tensorflow/layers/discrete_flows.py
-Which is introduced and explained in the paper: https://arxiv.org/abs/1905.10347 
-And modified for PyTorch. 
-"""
-
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
 from . import disc_utils
-
-class Reverse(nn.Module):
-    """Swaps the forward and reverse transformations of a layer."""
-    def __init__(self, reversible_layer, **kwargs):
-        super(Reverse, self).__init__(**kwargs)
-        if not hasattr(reversible_layer, 'reverse'):
-            raise ValueError('Layer passed-in has not implemented "reverse" method: '
-                        '{}'.format(reversible_layer))
-        self.forward = reversible_layer.reverse
-        self.reverse = reversible_layer.forward
-
 
 class DiscreteAutoregressiveFlow(nn.Module):
     """A discrete reversible layer.
@@ -238,7 +220,7 @@ class DiscreteBipartiteFlow(nn.Module):
     [prime fields](https://en.wikipedia.org/wiki/Finite_field)).
     """
 
-    def __init__(self, layer, parity, temperature, vocab_size, dim, embedding=False):
+    def __init__(self, layer, parity, temperature, vocab_size, dim):
         """Constructs flow.
         Args:
         layer: Two-headed masked network taking the inputs and returning a
@@ -255,24 +237,21 @@ class DiscreteBipartiteFlow(nn.Module):
         self.parity = parity # going to do a block split. #torch.tensor(mask).float()
         self.temperature = temperature
         self.vocab_size = vocab_size
-        self.dim = dim # total dimension of the vector being dealt with. 
-        self.embedding = embedding
+        self.dim = dim # total dimension of the vector being dealt with.
 
     def reverse(self, inputs, **kwargs):
         """reverse pass for bipartite data to latent."""
         #TODO: implement even odd shuffling. 
-        
+        origin_shape = [inputs.shape[0], inputs.shape[1], inputs.shape[2]]
+        inputs = inputs.view(origin_shape[0], -1)
         assert len(inputs.shape) ==2, 'need to flatten the inputs first!!!'
         z0, z1 = inputs[:,:self.dim//2], inputs[:,self.dim//2:]
         if self.parity:
             z0, z1 = z1, z0
         x0 = z0 
-        if self.embedding:
-            layer_outs = self.layer(torch.argmax(x0,dim=1).long(), **kwargs)
-        else: 
-            layer_outs = self.layer(x0, **kwargs)
-        if layer_outs.shape[-1] == 2 * self.vocab_size: # have a location and scaling parameter
-            loc, scale = torch.split(layer_outs, self.vocab_size, dim=-1)
+        layer_outs = self.layer(x0, **kwargs)
+        if layer_outs.shape[-1] == self.dim: # have a location and scaling parameter
+            loc, scale = torch.split(layer_outs, self.dim//2, dim=-1)
             loc = disc_utils.one_hot_argmax(loc, self.temperature).type(inputs.dtype)
             scale = disc_utils.one_hot_argmax(scale, self.temperature).type(inputs.dtype)
             #print('the scale', scale.argmax(-1))
@@ -280,7 +259,7 @@ class DiscreteBipartiteFlow(nn.Module):
             shifted_inputs = disc_utils.one_hot_minus(z1, loc)
             x1 = disc_utils.one_hot_multiply(shifted_inputs, inverse_scale)
 
-        elif layer_outs.shape[-1] == self.vocab_size:
+        elif layer_outs.shape[-1] == self.dim//2:
             loc = layer_outs
             loc = disc_utils.one_hot_argmax(loc, self.temperature).type(inputs.dtype)
             x1 = disc_utils.one_hot_minus(z1, loc)
@@ -289,6 +268,7 @@ class DiscreteBipartiteFlow(nn.Module):
         if self.parity:
             x0, x1 = x1, x0
         x = torch.cat([x0, x1], dim=1)
+        x = x.view(origin_shape[0], origin_shape[1], -1)
         return x
 
     def forward(self, inputs, **kwargs):
@@ -300,10 +280,7 @@ class DiscreteBipartiteFlow(nn.Module):
         if self.parity:
             x0, x1 = x1, x0
         z0 = x0 
-        if self.embedding:
-            layer_outs = self.layer(torch.argmax(z0, dim=1).long(), **kwargs)
-        else: 
-            layer_outs = self.layer(z0, **kwargs)
+        layer_outs = self.layer(z0, **kwargs)
         # outputting loc and scale
         if layer_outs.shape[-1] == self.dim:
             loc, scale = torch.split(layer_outs, self.dim//2, dim=-1)

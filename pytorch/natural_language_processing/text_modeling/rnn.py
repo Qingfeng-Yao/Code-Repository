@@ -9,6 +9,7 @@ class LSTMModel(nn.Module):
 	def __init__(self, num_classes, hidden_size=64, num_layers=2, embedding_dim=32, dp_rate=0.0, input_dp_rate=0.0,
 					   max_seq_len=-1, vocab=None, model_params=None):
 		super().__init__()
+		self.model_name = "RNN"
 		if model_params is not None:
 			hidden_size = get_param_val(model_params, "coupling_hidden_size", hidden_size)
 			embedding_dim = hidden_size//4

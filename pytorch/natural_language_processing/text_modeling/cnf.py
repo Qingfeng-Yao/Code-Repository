@@ -275,6 +275,8 @@ class CNFLanguageModeling(FlowModel):
 
 	def __init__(self, model_params, dataset_class, vocab_size, vocab):
 		super().__init__(layers=None, name="Language Modeling Flow")
+		self.model_name = "CNF"
+
 		self.model_params = model_params
 		self.dataset_class = dataset_class
 		self.max_seq_len = self.model_params["max_seq_len"]

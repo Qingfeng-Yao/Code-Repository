@@ -1,9 +1,3 @@
-"""
-author: trentbrick and yannadani
-Utils for the discrete layers. Taken from https://github.com/google/edward2/blob/2077d67ab8a5c73c39b8d43ccc8cd036dc0a8566/edward2/tensorflow/layers/utils.py 
-Which is introduced and explained in the paper: https://arxiv.org/abs/1905.10347 
-And modified for PyTorch. 
-"""
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -74,7 +68,6 @@ def py_multiplicative_inverse(a, n):
             inverse += n
         batched_inverse.append(inverse)
     return np.asarray(batched_inverse, dtype=np.int32).reshape(batched_a.shape)
-
 
 def one_hot_minus(inputs, shift):
     """Performs (inputs - shift) % vocab_size in the one-hot space.

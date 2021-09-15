@@ -1,13 +1,3 @@
-
-"""
-Masked autoencoder for distribution estimation.
-
-Code taken from Edward2: https://github.com/google/edward2/blob/master/edward2/tensorflow/layers/made.py
-and ported to PyTorch. 
-MaskedLinear taken from https://github.com/karpathy/pytorch-normalizing-flows and
-modified to work here. 
-"""
-
 import numpy as np
 import torch
 from torch import nn
@@ -153,7 +143,6 @@ class MADE(nn.Module):
         out = inputs.view(-1, input_shapes[-2], self.units)
         return out
 
-
 def create_degrees(input_dim,
                     hidden_dims,
                     input_order='left-to-right',
@@ -205,7 +194,6 @@ def create_degrees(input_dim,
         degrees.append(hidden_degrees)
     return degrees
 
-
 def create_masks(input_dim,
                 hidden_dims,
                 input_order='left-to-right',
@@ -236,17 +224,3 @@ def create_masks(input_dim,
     mask = torch.Tensor(degrees[-1][:, np.newaxis] < degrees[0]).float()
     masks.append(mask)
     return masks
-
-
-'''def make_masked_initializer(mask):
-    initializer = tf.keras.initializers.GlorotUniform()
-    def masked_initializer(shape, dtype=None):
-        return mask * initializer(shape, dtype)
-    return masked_initializer
-
-
-def make_masked_constraint(mask):
-    constraint = tf.identity
-    def masked_constraint(x):
-        return mask * constraint(x)
-    return masked_constraint'''

@@ -560,6 +560,8 @@ class TrainTemplate:
 				self.optimizer.zero_grad()
 				loss.backward()
 				torch.nn.utils.clip_grad_norm_(parameters_to_optimize, max_gradient_norm)
+				if self.model.model_name in ["DAF", "DBF"]:
+					torch.nn.utils.clip_grad_norm_(self.model.base_log_probs, max_gradient_norm)
 				self.optimizer.step()
 				if self.optimizer.param_groups[0]['lr'] > self.lr_minimum:
 					self.lr_scheduler.step()

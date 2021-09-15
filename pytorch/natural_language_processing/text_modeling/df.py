@@ -29,8 +29,8 @@ class DFModel(nn.Module):
             
             elif model_name == "DBF":
                 vector_length = self.vocab_size*max_seq_len
-                layer = torch.nn.Embedding(vector_length//2, vector_length//2)
-                disc_layer = DiscreteBipartiteFlow(layer, i%2, temperature, self.vocab_size, vector_length, embedding=True)
+                layer = lambda inputs, **kwargs: inputs
+                disc_layer = DiscreteBipartiteFlow(layer, i%2, temperature, self.vocab_size, vector_length)
                 # i%2 flips the parity of the masking. It splits the vector in half and alternates
                 # each flow between changing the first half or the second. 
             
@@ -39,7 +39,7 @@ class DFModel(nn.Module):
         self.flows = nn.ModuleList(flows)
 
         # Making random base probability distribution
-        self.base_log_probs = torch.tensor(torch.randn(max_seq_len, self.vocab_size), requires_grad = True)
+        self.base_log_probs = torch.randn(max_seq_len, self.vocab_size).clone().detach().requires_grad_(True)
 
     def forward(self, z, reverse=False, **kwargs):
         if not reverse:
