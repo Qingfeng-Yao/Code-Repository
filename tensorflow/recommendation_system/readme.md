@@ -12,6 +12,7 @@
 - 2020 | Hybrid Interest Modeling for Long-tailed Users | Alibaba
 - 2021 | One Model to Serve All: Star Topology Adaptive Recommender for Multi-Domain CTR Prediction | Alibaba
 - 2021 | DSelect-k: Differentiable Selection in the Mixture of Experts with Applications to Multi-Task Learning | Google
+- 2021 | Mixture of Virtual-Kernel Experts for Multi-Objective User Profile Modeling | Tencent
 
 ## ª∑æ≥≈‰÷√
 ### CTR
