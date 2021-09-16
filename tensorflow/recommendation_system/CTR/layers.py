@@ -253,15 +253,8 @@ def group_layer(features, params, emb_dict):
                     )
             group_hidden = tf.layers.dense(seq_vec_mean, units = params['num_user_groups'], activation = tf.nn.softmax, name ='group_hidden')
             if params['use_cluster_loss']:
-                # target = tf.compat.v1.get_variable(
-                #         name="{}_target_prob".format(s),
-                #         shape=[tf.shape(group_hidden)[0], group_hidden.get_shape().as_list()[1]],
-                #         initializer=tf.truncated_normal_initializer(),
-                #     )
-                # expect_prob = tf.random_normal(shape=[params['num_user_groups']], mean=0, stddev=1)
                 expect_prob = tf.random_uniform(shape=[params['num_user_groups']], minval=0, maxval=1)
                 pred_prob = tf.reduce_mean(group_hidden, axis=0)
-                # loss_cluster = tf.reduce_sum(tf.multiply(target, tf.log(tf.div(target, group_hidden))))+tf.reduce_sum(tf.multiply(pred_prob, tf.log(tf.div(pred_prob, expect_prob))))
                 loss_cluster = tf.reduce_sum(tf.multiply(pred_prob, tf.log(tf.div(pred_prob, expect_prob))))
                 tf.add_to_collection('all_loss_cluster', loss_cluster)
             index_ids = tf.argmax(group_hidden, axis=-1)
