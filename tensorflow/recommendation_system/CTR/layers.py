@@ -241,29 +241,10 @@ def group_layer(features, params, emb_dict):
             hist_emb = emb_dict['{}_hist_emb'.format(s)]
         
             # direct mean pooling 
-            seq_2d = tf.reshape(hist_emb, [-1, tf.shape(hist_emb)[2]])
-            sequence_mask = tf.not_equal(features[hist_name], 0)
-            seq_vec = tf.reshape(tf.where(tf.reshape(sequence_mask, [-1]),
-                                                seq_2d, tf.zeros_like(seq_2d)),
-                                        tf.shape(hist_emb))
-            seq_length = tf.reduce_sum(tf.cast(sequence_mask, tf.float32), axis=1,
-                                                keep_dims=True)  # [batch_size, 1]
-            seq_length_tile = tf.tile(seq_length,
-                                            [1,
-                                            seq_vec.get_shape().as_list()[-1]])  # [batch_size, emb_dim]
-            seq_vec_mean = tf.multiply(tf.reduce_sum(seq_vec, axis=1),
-                                            tf.pow(seq_length_tile, -1))
+            seq_vec_mean = emb_dict['{}_mean_pool_emb'.format(s)]
 
-            # self atten
-            seq_att_3d = attention(hist_emb, hist_emb, params, features[hist_name], features[hist_name])
-            seq_2d_att = tf.reshape(seq_att_3d, [-1, tf.shape(seq_att_3d)[2]])  
-            seq_vec_att = tf.reshape(tf.where(tf.reshape(sequence_mask, [-1]),
-                                                seq_2d_att, tf.zeros_like(seq_2d_att)),
-                                        tf.shape(seq_att_3d)) 
-            seq_vec_mean_att = tf.multiply(tf.reduce_sum(seq_vec_att, axis=1),
-                                                tf.pow(seq_length_tile, -1))
-
-            emb_dict['{}_self_att_emb'.format(s)] = seq_vec_mean_att
+            # target atten
+            seq_vec_ta = emb_dict['{}_att_emb'.format(s)]
 
             seq_group_embedding_table = tf.compat.v1.get_variable(
                         name="{}_group_embedding".format(s),
@@ -289,7 +270,7 @@ def group_layer(features, params, emb_dict):
             group_out = tf.layers.dense(weighted_group_emb, units = params['emb_dim'], activation = tf.nn.sigmoid, name ='group_out')
 
             loss_sim = tf.maximum(1 - tf.reduce_mean(tf.reduce_sum(
-                        tf.multiply(tf.nn.l2_normalize(group_out, dim=1), tf.nn.l2_normalize(seq_vec_mean_att, dim=1)),
+                        tf.multiply(tf.nn.l2_normalize(group_out, dim=1), tf.nn.l2_normalize(seq_vec_ta, dim=1)),
                         axis=-1)), 0)
             tf.add_to_collection('all_loss_sim', loss_sim)
 
@@ -299,7 +280,7 @@ def att_weight_layer(emb_dict, params, scope):
     for s in params['seq_names']:
         with tf.compat.v1.variable_scope(scope+"_"+s):
             query = emb_dict['{}_emb'.format(s)]
-            per_emb = emb_dict['{}_self_att_emb'.format(s)]
+            per_emb = emb_dict['{}_att_emb'.format(s)]
             group_emb = emb_dict['{}_group_emb'.format(s)]
 
             per_hidden = tf.layers.dense(per_emb, units = query.get_shape().as_list()[-1], activation = tf.nn.relu, name ='per_hidden')
@@ -312,7 +293,7 @@ def att_weight_layer(emb_dict, params, scope):
             per_emb = tf.multiply(per_emb, tf.div(logit_per, logit_per + logit_group))
             group_emb = tf.multiply(group_emb, tf.div(logit_group, logit_per + logit_group))
 
-            emb_dict['{}_self_att_emb'.format(s)] = per_emb     
+            emb_dict['{}_att_emb'.format(s)] = per_emb     
             emb_dict['{}_group_emb'.format(s)] = group_emb
 
 def moe_layer(dense, params, mode, scope):
