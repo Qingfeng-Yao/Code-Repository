@@ -55,9 +55,9 @@
 - 统一实验设置: use_multi_gpu/False, restart/False, checkpoint_path/None, load_config/False, no_model_checkpoints/False, only_eval/False, cluster/True, debug/False, clean_up/False
 - 指标: 测试集上的负对数似然(test bpd), 生成一个序列所需要的时间(generate, 单位s, PTB对应序列长度为288, text8对应序列长度为256)
 - PTB+CNF: `python3 train.py --dataset penntreebank --model_name CNF --max_iterations 25000 --eval_freq 500 --max_seq_len 288 --batch_size 128 --encoding_dim 3 --coupling_hidden_layers 1 --coupling_num_mixtures 51 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --optimizer 4 --learning_rate 7.5e-4 --cluster`
-    - test bpd: 1.26, generate: 
+    - test bpd: 1.26
 - PTB+RNN: `python3 train.py --dataset penntreebank --model_name RNN --max_iterations 25000 --eval_freq 500 --max_seq_len 288 --batch_size 128 --encoding_dim 3 --coupling_hidden_layers 1 --coupling_num_mixtures 51 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --optimizer 4 --learning_rate 7.5e-4 --cluster`
-    - test bpd: 1.273 
+    - test bpd: 1.273
 - PTB+DAF: `python3 train.py --dataset penntreebank --model_name DAF --max_iterations 25000 --eval_freq 500 --max_seq_len 288 --batch_size 128 --discrete_num_flows 1 --temperature 0.1 --discrete_nh 512 --learning_rate 7.5e-4 --cluster`
     - test bpd: 4.033
 - PTB+DBF: `python3 train.py --dataset penntreebank --model_name DBF --max_iterations 25000 --eval_freq 500 --max_seq_len 288 --batch_size 128 --discrete_num_flows 1 --temperature 0.1 --discrete_nh 512 --learning_rate 7.5e-4 --cluster`

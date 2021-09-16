@@ -4,95 +4,144 @@ import os
 from glob import glob
 import shutil
 import pickle
+import time
 
 import torch
 
 from distributions import PriorDistribution
-from utils import set_debug_level, load_args, args_to_params, PARAM_CONFIG_FILE
-from models import TrainLanguageModeling
+from utils import set_debug_level, load_args, args_to_params, PARAM_CONFIG_FILE, get_device
+from models import TrainLanguageModeling, TaskLanguageModeling
+
+from rnn import LSTMModel
+from cnf import CNFLanguageModeling
+from df import DFModel
 
 def start_training(args):
 	"""
 	Function to start a training loop.
 	"""
-	if args.cluster:
-		set_debug_level(2)
-		loss_freq = 250
+	if args.reverse: # existing bugs
+		dataset_name = args.dataset
+		dataset_class = TaskLanguageModeling.get_dataset_class(dataset_name)
+		vocab_dict = dataset_class.get_vocabulary()
+		vocab_torchtext = dataset_class.get_torchtext_vocab()
+
+		model_name = args.model_name
+		model_params, _ = args_to_params(args)
+		if model_name == "RNN":
+			model = LSTMModel(num_classes=len(vocab_dict), vocab=vocab_torchtext, model_params=model_params)
+		elif model_name == "CNF":
+			model = CNFLanguageModeling(model_params=model_params, vocab_size=len(vocab_dict), vocab=vocab_torchtext, dataset_class=dataset_class)
+		elif model_name in ["DAF", "DBF"]:
+			model = DFModel(num_classes=len(vocab_dict), batch_size=args.batch_size, model_params=model_params, model_name=model_name)
+
+		# load best model
+		checkpoint_file = args.best_model_file_path
+		print("Loading checkpoint \"" + str(checkpoint_file) + "\"")
+		if torch.cuda.is_available():
+			checkpoint = torch.load(checkpoint_file)
+		else:
+			checkpoint = torch.load(checkpoint_file, map_location='cpu')
+		
+		pretrained_model_dict = {key: val for key, val in checkpoint['model_state_dict'].items()}
+		model_dict = model.state_dict()
+		model_dict.update(pretrained_model_dict)
+		model.load_state_dict(model_dict)
+		model = model.to(get_device())
+
+		# sampling
+		if model_name in ["DAF", "DBF"]:
+			data_distribution = torch.distributions.OneHotCategorical(logits=model.base_log_probs)
+		else:
+			data_distribution = torch.distributions.OneHotCategorical(logits=torch.randn(args.max_seq_len, len(vocab_dict)))
+		samples = data_distribution.sample([args.num_samples]).to(get_device())
+		start_time = time.time()
+		model(samples, reverse=True)
+		end_time = time.time()
+		print("generating a sequence of length {} takes {}s".format(args.max_seq_len, end_time - start_time))
 	else:
-		set_debug_level(0)
-		loss_freq = 2
-		if args.debug:
-			# To find possible errors easier, activate anomaly detection. Note that this slows down training
-			torch.autograd.set_detect_anomaly(True) 
+    	
+		if args.cluster:
+			set_debug_level(2)
+			loss_freq = 250
+		else:
+			set_debug_level(0)
+			loss_freq = 2
+			if args.debug:
+				# To find possible errors easier, activate anomaly detection. Note that this slows down training
+				torch.autograd.set_detect_anomaly(True) 
 
-	if args.print_freq > 0:
-		loss_freq = args.print_freq
+		if args.print_freq > 0:
+			loss_freq = args.print_freq
 
-	only_eval = args.only_eval
+		only_eval = args.only_eval
 
-	if args.load_config:
-		if args.checkpoint_path is None:
-			print("[!] ERROR: Please specify the checkpoint path to load the config from.")
-			sys.exit(1)
-		debug = args.debug
-		checkpoint_path = args.checkpoint_path
-		args = load_args(args.checkpoint_path)
-		args.clean_up = False
-		args.checkpoint_path = checkpoint_path
-		if only_eval:
-			args.use_multi_gpu = False
-			args.debug = debug
+		if args.load_config:
+			if args.checkpoint_path is None:
+				print("[!] ERROR: Please specify the checkpoint path to load the config from.")
+				sys.exit(1)
+			debug = args.debug
+			checkpoint_path = args.checkpoint_path
+			args = load_args(args.checkpoint_path)
+			args.clean_up = False
+			args.checkpoint_path = checkpoint_path
+			if only_eval:
+				args.use_multi_gpu = False
+				args.debug = debug
 
-	# Setup training
-	model_params, optimizer_params = args_to_params(args) # make params to dict, set seed, model_params include prior distribution, cate encoding, scheduler...
-	trainModule = TrainLanguageModeling(model_params=model_params,
-								optimizer_params=optimizer_params, 
-								batch_size=args.batch_size,
-								checkpoint_path=args.checkpoint_path, 
-								debug=args.debug,
-								multi_gpu=args.use_multi_gpu
-								)
+		# Setup training
+		model_params, optimizer_params = args_to_params(args) # make params to dict, set seed, model_params include prior distribution, cate encoding, scheduler...
+		trainModule = TrainLanguageModeling(model_params=model_params,
+									optimizer_params=optimizer_params, 
+									batch_size=args.batch_size,
+									checkpoint_path=args.checkpoint_path, 
+									debug=args.debug,
+									multi_gpu=args.use_multi_gpu
+									)
 
-	# Function for cleaning up the checkpoint directory
-	def clean_up_dir():
-		assert str(trainModule.checkpoint_path) not in ["/", "/home/", "/lhome/"], \
-				"[!] ERROR: Checkpoint path is \"%s\" and is selected to be cleaned. This is probably not wanted..." % str(trainModule.checkpoint_path)
-		print("Cleaning up directory " + str(trainModule.checkpoint_path) + "...")
-		for file_in_dir in sorted(glob(os.path.join(trainModule.checkpoint_path, "*"))):
-			print("Removing file " + file_in_dir)
-			try:
-				if os.path.isfile(file_in_dir):
-					os.remove(file_in_dir)
-				elif os.path.isdir(file_in_dir): 
-					shutil.rmtree(file_in_dir)
-			except Exception as e:
-				print(e)
+		# Function for cleaning up the checkpoint directory
+		def clean_up_dir():
+			assert str(trainModule.checkpoint_path) not in ["/", "/home/", "/lhome/"], \
+					"[!] ERROR: Checkpoint path is \"%s\" and is selected to be cleaned. This is probably not wanted..." % str(trainModule.checkpoint_path)
+			print("Cleaning up directory " + str(trainModule.checkpoint_path) + "...")
+			for file_in_dir in sorted(glob(os.path.join(trainModule.checkpoint_path, "*"))):
+				print("Removing file " + file_in_dir)
+				try:
+					if os.path.isfile(file_in_dir):
+						os.remove(file_in_dir)
+					elif os.path.isdir(file_in_dir): 
+						shutil.rmtree(file_in_dir)
+				except Exception as e:
+					print(e)
 
-	if args.restart and args.checkpoint_path is not None and os.path.isdir(args.checkpoint_path) and not only_eval:
-		clean_up_dir()
-
-	if not only_eval:
-		# Save argument namespace object for loading/evaluation
-		args_filename = os.path.join(trainModule.checkpoint_path, PARAM_CONFIG_FILE)
-		with open(args_filename, "wb") as f:
-			pickle.dump(args, f)
-
-		# Start training
-		trainModule.train_model(args.max_iterations, loss_freq=loss_freq, eval_freq=args.eval_freq, save_freq=args.save_freq, no_model_checkpoints=args.no_model_checkpoints)
-
-		# Cleaning up the checkpoint directory afterwards if selected
-		if args.clean_up:
+		if args.restart and args.checkpoint_path is not None and os.path.isdir(args.checkpoint_path) and not only_eval:
 			clean_up_dir()
-			os.rmdir(trainModule.checkpoint_path)
-	else:
-		# Only evaluating the model. Should be combined with loading a model.
-		# However, the recommended way of evaluating a model is by the "eval.py" file in the experiment folder(s).
-		trainModule.evaluate_model()
+
+		if not only_eval:
+			# Save argument namespace object for loading/evaluation
+			args_filename = os.path.join(trainModule.checkpoint_path, PARAM_CONFIG_FILE)
+			with open(args_filename, "wb") as f:
+				pickle.dump(args, f)
+
+			# Start training
+			trainModule.train_model(args.max_iterations, loss_freq=loss_freq, eval_freq=args.eval_freq, save_freq=args.save_freq, no_model_checkpoints=args.no_model_checkpoints)
+
+			# Cleaning up the checkpoint directory afterwards if selected
+			if args.clean_up:
+				clean_up_dir()
+				os.rmdir(trainModule.checkpoint_path)
+		else:
+			# Only evaluating the model. Should be combined with loading a model.
+			# However, the recommended way of evaluating a model is by the "eval.py" file in the experiment folder(s).
+			trainModule.evaluate_model()
 
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
 	# model and dataset param; cuda is set in utils.py
 	parser.add_argument("--model_name", help="Name of model. Options: RNN(LSTM), CNF(Categorical Normalizing Flow), DAF(Discrete autoregressive flows), DBF(Discrete bipartite flows)", type=str, default="CNF")
+	parser.add_argument("--reverse", help="Model sampling.", action="store_true")
+	parser.add_argument("--best_model_file_path", help="Path of best model checkpoint.", type=str, default="checkpoints/LanguageModeling_RNN_14_09_2021__09_05_03/checkpoint_0008500.tar")
+	parser.add_argument("--num_samples", help="Number of samples.", type=int, default=1)
 	parser.add_argument("--dataset", help="Name of the dataset to train on. Options: penntreebank, text8", type=str, default="penntreebank")
 	parser.add_argument("--batch_size", help="Batch size used during training", type=int, default=64)
 	parser.add_argument("--max_seq_len", help="Maximum sequence length of training sentences.", type=int, default=256)
