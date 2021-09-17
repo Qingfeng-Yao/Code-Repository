@@ -86,12 +86,15 @@ class IMDB_Dataset(TorchnlpDataset):
             self.encoder = MyBertTokenizer.from_pretrained('bert-base-uncased', cache_dir=root)
 
         # Encode
+        self.max_seq_len = 0
         for row in datasets_iterator(self.train_set, self.test_set):
             if append_sos:
                 sos_id = self.encoder.stoi[DEFAULT_SOS_TOKEN]
                 row['text'] = torch.cat((torch.tensor(sos_id).unsqueeze(0), self.encoder.encode(row['text'])))
             else:
                 row['text'] = self.encoder.encode(row['text'])
+            if len(row['text'])>self.max_seq_len:
+                self.max_seq_len = len(row['text'])
 
         # Compute tf-idf weights
         if use_tfidf_weights:

@@ -1,5 +1,5 @@
 from base.base_dataset import BaseADDataset
-from networks.main import build_network
+from networks.main_cvdd import build_network
 from optim.cvdd_trainer import CVDDTrainer
 
 import json

@@ -74,11 +74,7 @@ class CVDDTrainer(BaseTrainer):
         net.train()
         alpha_i = 0
         for epoch in range(self.n_epochs):
-
-            scheduler.step()
-            if epoch in self.lr_milestones:
-                logger.info('  LR scheduler: new learning rate is %g' % float(scheduler.get_lr()[0]))
-
+            
             if epoch in self.alpha_milestones:
                 net.alpha = float(self.alphas[alpha_i])
                 logger.info('  Temperature alpha scheduler: new alpha is %g' % net.alpha)
@@ -90,7 +86,7 @@ class CVDDTrainer(BaseTrainer):
             dists_per_head = ()
             epoch_start_time = time.time()
             for data in train_loader:
-                _, text_batch, _, _ = data
+                _, _, text_batch, _, _ = data
                 text_batch = text_batch.to(self.device)
                 # text_batch.shape = (sentence_length, batch_size)
 
@@ -121,6 +117,7 @@ class CVDDTrainer(BaseTrainer):
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(net.parameters(), 0.5)  # clip gradient norms in [-0.5, 0.5]
                 optimizer.step()
+                scheduler.step()
 
                 # Get attention matrix
                 AAT = A @ A.transpose(1, 2)
@@ -179,7 +176,7 @@ class CVDDTrainer(BaseTrainer):
         net.eval()
         with torch.no_grad():
             for data in test_loader:
-                idx, text_batch, label_batch, _ = data
+                idx, _, text_batch, label_batch, _ = data
                 text_batch, label_batch = text_batch.to(self.device), label_batch.to(self.device)
 
                 # forward pass
@@ -274,7 +271,7 @@ def initialize_context_vectors(net, train_loader, device):
     # Get vector representations
     X = ()
     for data in train_loader:
-        _, text, _, _ = data
+        _, _, text, _, _ = data
         text = text.to(device)
         # text.shape = (sentence_length, batch_size)
 
@@ -317,7 +314,7 @@ def get_top_words_per_context(dataset, encoder, net, data_loader, device, k_top=
     net.eval()
     with torch.no_grad():
         for data in data_loader:
-            idx, text_batch, _, _ = data
+            idx, _, text_batch, _, _ = data
             text_batch = text_batch.to(device)
             cosine_dists, _, _ = net(text_batch)
             dists_per_context += (cosine_dists.cpu().data.numpy(),)

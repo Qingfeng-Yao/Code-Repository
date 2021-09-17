@@ -10,6 +10,7 @@ print('test size: {}'.format(len(dataset_reuters.test_set)))
 print('test normal size: {}'.format(len(dataset_reuters.test_n_set)))
 print('test anomalous size: {}'.format(len(dataset_reuters.test_a_set)))
 print('vocab size: {}'.format(dataset_reuters.encoder.vocab_size))
+print('max sequence length: {}'.format(dataset_reuters.max_seq_len))
 
 # print('*** processing newsgroups20 ***')
 # nc_newsgroups20 = 5 # {0: comp, 1: rec, 2: sci, 3: misc, 4: pol, 5: rel}
@@ -21,6 +22,7 @@ print('vocab size: {}'.format(dataset_reuters.encoder.vocab_size))
 # print('test normal size: {}'.format(len(dataset_newsgroups20.test_n_set)))
 # print('test anomalous size: {}'.format(len(dataset_newsgroups20.test_a_set)))
 # print('vocab size: {}'.format(dataset_newsgroups20.encoder.vocab_size))
+# print('max sequence length: {}'.format(dataset_newsgroups20.max_seq_len))
 
 # print('*** processing imdb ***')
 # nc_imdb = 1 # {0: pos, 1: neg}
@@ -32,3 +34,4 @@ print('vocab size: {}'.format(dataset_reuters.encoder.vocab_size))
 # print('test normal size: {}'.format(len(dataset_imdb.test_n_set)))
 # print('test anomalous size: {}'.format(len(dataset_imdb.test_a_set)))
 # print('vocab size: {}'.format(dataset_imdb.encoder.vocab_size))
+# print('max sequence length: {}'.format(dataset_imdb.max_seq_len))

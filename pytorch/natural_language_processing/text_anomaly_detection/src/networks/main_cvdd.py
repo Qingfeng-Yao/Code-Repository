@@ -40,7 +40,6 @@ def build_network(net_name, dataset, embedding_size=None, pretrained_model=None,
     # Load network
     if net_name == 'embedding':
         net = embedding
-    if net_name == 'cvdd_Net':
+    elif net_name == 'cvdd_Net':
         net = CVDDNet(embedding, attention_size=attention_size, n_attention_heads=n_attention_heads)
-
     return net

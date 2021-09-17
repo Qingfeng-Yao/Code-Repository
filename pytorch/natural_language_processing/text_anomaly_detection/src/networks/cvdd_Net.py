@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from base.base_net import BaseNet
 from networks.self_attention import SelfAttention
 
-
 class CVDDNet(BaseNet):
 
     def __init__(self, pretrained_model, attention_size=100, n_attention_heads=1):

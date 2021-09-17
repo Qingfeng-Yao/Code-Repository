@@ -35,6 +35,7 @@ def collate_fn(batch):
     transpose = (lambda b: b.t_().squeeze(0).contiguous())
 
     indices = [row['index'] for row in batch]
+    lengths = torch.stack([torch.tensor(len(row['text'])) for row in batch])
     text_batch, _ = stack_and_pad_tensors([row['text'] for row in batch])
     label_batch = torch.stack([row['label'] for row in batch])
     weights = [row['weight'] for row in batch]
@@ -45,4 +46,4 @@ def collate_fn(batch):
         weight_batch, _ = stack_and_pad_tensors([row['weight'] for row in batch])
         weight_batch = transpose(weight_batch)
 
-    return indices, transpose(text_batch), label_batch.float(), weight_batch
+    return indices, lengths, transpose(text_batch), label_batch.float(), weight_batch

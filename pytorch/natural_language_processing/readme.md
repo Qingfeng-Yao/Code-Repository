@@ -73,15 +73,15 @@
 
 ### text anomaly detection
 #### 数据集
-- 分别统计每个数据集以每个类为正常数据时的训练集(只包含正常数据)、测试集(同时包含正常数据和异常数据)以及词汇表大小，数值在下面每个类别后的括号内
+- 分别统计每个数据集以每个类为正常数据时的训练集(只包含正常数据)、测试集(同时包含正常数据和异常数据)、词汇表大小以及默认配置下的最长序列长度，数值在下面每个类别后的括号内
 - Reuters-21578
-    - 共7类: earn(2840/1083/1097/6714), acq(1596/696/1484/7524), crude(253/121/2059/5623), trade(250/76/2104/5713), money-fx(222/87/2093/5444), interest(191/81/2099/5240), ship(108/36/2144/5272)
+    - 共7类: earn(2840/1083/1097/6714/494), acq(1596/696/1484/7524/502), crude(253/121/2059/5623/484), trade(250/76/2104/5713/524), money-fx(222/87/2093/5444/502), interest(191/81/2099/5240/484), ship(108/36/2144/5272/484)
     - 测试集的总大小均是2180
 - 20 Newsgroups
-    - 共6类: comp(2857/1909/5390/25818), rec(2301/1524/5775/23578), sci(2311/1520/5779/24873), misc(577/382/6917/21389), pol(1531/1025/6274/24015), rel(1419/939/6360/22935)
+    - 共6类: comp(2857/1909/5390/25818/7337), rec(2301/1524/5775/23578/7337), sci(2311/1520/5779/24873/7337), misc(577/382/6917/21389/7337), pol(1531/1025/6274/24015/7337), rel(1419/939/6360/22935/7337)
     - 测试集的总大小均是7299
 - IMDB
-    - 共2类: pos(12500/12500/12500/44424), neg(12500/12500/12500/43442)
+    - 共2类: pos(12500/12500/12500/44424/1390), neg(12500/12500/12500/43442/1132)
     - 测试集的总大小均是25000
 - 先创建目录`data`，然后进入`src`，对`Reuters-21578`，执行`import nltk;nltk.download('reuters', download_dir='../data');nltk.download('stopwords', download_dir='../data');nltk.download('punkt', download_dir='../data')`；其余两个数据集以及相应的预训练词向量会自动下载
 - 上述文本均经过如下的预处理: 小写；移除标点、前后空格、停用词和长度小于3的词
@@ -90,12 +90,21 @@
 
 #### 模型
 - CVDD
+    - 引入自注意力机制学习序列的表示，同时引入相同形状的可学习上下文向量，异常分数定义为输入序列与上下文向量之间的余弦距离
+- EmbeddingNF
+    - 引入标准化流计算序列的似然，并以负对数似然为异常分数
 
 #### 相关执行命令
-- 执行命令前需要先为每个数据集创建日志目录，如`log/test_reuters;log/test_newsgroups20;log/test_imdb`
-- CVDD+reuters: `python3 main.py reuters cvdd_Net ../log/test_reuters ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
+- 运行以下命令前需要先创建日志目录`log`
+- CVDD+reuters: `python3 main.py reuters cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
     - `--normal_class`可取`0-6`
-    - auc: 0/93.93%, 1/90.11%, 2/89.74%, 3/97.93%, 4/82.35%, 5/92.64%, 6/97.62%
+    - auc: 0/93.88%, 1/90.14%, 2/89.74%, 3/97.93%, 4/82.35%, 5/92.64%, 6/97.62%
+- EmbeddingNF+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --coupling_hidden_layers 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
+    - `--normal_class`可取`0-6`
+    - auc: 0/97.50%, 1/90.11%, 2/89.74%, 3/97.93%, 4/82.35%, 5/92.64%, 6/97.62%
+
+
+
 - CVDD+newsgroups20: `python3 main.py newsgroups20 cvdd_Net ../log/test_newsgroups20 ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
     - `--normal_class`可取`0-5`
     - auc: 0/74.22%, 1/59.90%, 2/58.05%, 3/75.24%, 4/71.05%, 5/77.78%
