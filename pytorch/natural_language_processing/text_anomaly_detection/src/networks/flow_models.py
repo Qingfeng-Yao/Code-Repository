@@ -111,9 +111,14 @@ class LSTMFeatureModel(nn.Module):
 					   input_dp_rate=0.0, **kwargs):
 		super().__init__()
 
-		time_embed = nn.Linear(2*max_seq_len, int(hidden_size//8))
-		time_embed_dim = time_embed.weight.data.shape[0]
-		self.time_concat = TimeConcat(time_embed=time_embed, input_dp_rate=input_dp_rate)
+		if input_dp_rate < 1.0:
+			time_embed = nn.Linear(2*max_seq_len, int(hidden_size//8))
+			time_embed_dim = time_embed.weight.data.shape[0]
+			self.time_concat = TimeConcat(time_embed=time_embed, input_dp_rate=input_dp_rate)
+		else:
+			self.time_concat = None
+			time_embed_dim = 0
+
 		inp_embed_dim = hidden_size//2 - time_embed_dim
 		self.input_embed = nn.Sequential(
 				nn.Linear(c_in, hidden_size//2),
@@ -136,8 +141,9 @@ class LSTMFeatureModel(nn.Module):
 
 	def forward(self, x, length=None, channel_padding_mask=None, length_one_hot=None, **kwargs):
 		_inp_embed = self.input_embed(x)
-		embed = self.time_concat(x=_inp_embed, length_one_hot=length_one_hot, length=length)
-		embed = torch.cat([embed.new_zeros(embed.size(0),1,embed.size(2)), embed[:,:-1]], dim=1)
+		if self.time_concat is not None:
+			_inp_embed = self.time_concat(x=_inp_embed, length_one_hot=length_one_hot, length=length)
+		embed = torch.cat([_inp_embed.new_zeros(_inp_embed.size(0),1,_inp_embed.size(2)), _inp_embed[:,:-1]], dim=1)
 
 		lstm_out = run_padded_LSTM(x=embed, lstm_cell=self.lstm_module, length=length.cpu())
 

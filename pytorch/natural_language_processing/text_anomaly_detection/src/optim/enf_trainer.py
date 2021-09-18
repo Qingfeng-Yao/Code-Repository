@@ -19,12 +19,12 @@ class ENFTrainer(BaseTrainer):
         super().__init__(optimizer_name, lr, n_epochs, lr_milestones, batch_size, weight_decay, device,
                          n_jobs_dataloader)
         self.prior_distribution = create_prior_distribution(prior_dist_params)
-        self.length_prior = None
         self.test_auc = 0.0
         self.test_scores = None
 
     def train(self, dataset: BaseADDataset, net: ENFNet):
         logger = logging.getLogger()
+        length_prior = dataset.length_prior
 
         # Set device for network
         net = net.to(self.device)
@@ -70,7 +70,7 @@ class ENFTrainer(BaseTrainer):
                 neglog_prob = -(self.prior_distribution.log_prob(z) * x_channel_mask).sum(dim=[1,2])
                 neg_ldj = -ldj
                 
-                loss, _ = self._calc_loss(neg_ldj, neglog_prob, length_batch)
+                loss, _ = self._calc_loss(neg_ldj, neglog_prob, length_batch, length_prior)
 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(net.parameters(), 0.5)  # clip gradient norms in [-0.5, 0.5]
@@ -93,8 +93,8 @@ class ENFTrainer(BaseTrainer):
 
         return net
 
-    def _calc_loss(self, neg_ldj, neglog_prob, x_length):
-        if self.length_prior is None:
+    def _calc_loss(self, neg_ldj, neglog_prob, x_length, length_prior):
+        if length_prior is None:
             neg_ldj = (neg_ldj / x_length.float())
             neglog_prob = (neglog_prob / x_length.float())
             loss = neg_ldj + neglog_prob
@@ -102,7 +102,7 @@ class ENFTrainer(BaseTrainer):
             neg_ldj = (neg_ldj / (x_length+1).float())
             neglog_prob = (neglog_prob / (x_length+1).float())
             # Prior for timestep
-            log_p_T = [self.length_prior[l]*1.0/(l+1) for l in x_length.detach().cpu().numpy()]
+            log_p_T = [length_prior[l]*1.0/(l+1) for l in x_length.detach().cpu().numpy()]
             log_p_T = torch.FloatTensor(log_p_T).to(self.device)
             loss = neg_ldj + neglog_prob + log_p_T
 
@@ -113,6 +113,7 @@ class ENFTrainer(BaseTrainer):
 
     def test(self, dataset: BaseADDataset, net: ENFNet):
         logger = logging.getLogger()
+        length_prior = dataset.length_prior
 
         # Set device for network
         net = net.to(self.device)
@@ -138,7 +139,7 @@ class ENFTrainer(BaseTrainer):
                 neglog_prob = -(self.prior_distribution.log_prob(z) * x_channel_mask).sum(dim=[1,2])
                 neg_ldj = -ldj
                 
-                loss, ad_scores = self._calc_loss(neg_ldj, neglog_prob, length_batch)
+                loss, ad_scores = self._calc_loss(neg_ldj, neglog_prob, length_batch, length_prior)
 
                 # Save tuples of (idx, label, score) in a list
                 idx_label_score += list(zip(idx,

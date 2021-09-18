@@ -25,7 +25,7 @@ from datasets.main import load_dataset
               help='Config JSON-file path (default: None).')
 @click.option('--load_model', type=click.Path(exists=True), default=None,
               help='Model file path (default: None).')
-@click.option('--device', type=str, default='cuda:3', help='Computation device to use ("cpu", "cuda", "cuda:2", etc.).')
+@click.option('--device', type=str, default='cuda:1', help='Computation device to use ("cpu", "cuda", "cuda:2", etc.).')
 @click.option('--seed', type=int, default=-1, help='Set seed. If -1, use randomization.')
 @click.option('--tokenizer', default='spacy', type=click.Choice(['spacy', 'bert']), help='Select text tokenizer.')
 @click.option('--clean_txt', is_flag=True, help='Specify if text should be cleaned in a pre-processing step.')
@@ -41,9 +41,9 @@ from datasets.main import load_dataset
               help='Dropout to use in the networks.')
 @click.option('--coupling_hidden_size', type=int, default=1024, help='Hidden size of the coupling layers.')
 @click.option('--coupling_hidden_layers', type=int, default=2, help='Number of hidden layers in the coupling layers.')
-@click.option('--coupling_num_flows', type=int, default=1, help='Number of coupling layers to use.')
+@click.option('--coupling_num_flows', type=int, default=2, help='Number of coupling layers to use.')
 @click.option('--coupling_num_mixtures', type=int, default=64, help='Number of mixtures used in the coupling layers.')
-@click.option('--max_seq_len', type=int, default=256, help='Maximum sequence length. reuters: 550, newsgroups20: 7337, imdb: 1400')
+@click.option('--max_seq_len', type=int, default=64, help='Maximum sequence length. reuters: 550, newsgroups20: 7337, imdb: 1400')
 
 @click.option('--prior_dist_type', type=click.Choice([PriorDistribution.LOGISTIC, PriorDistribution.GAUSSIAN]), default=PriorDistribution.LOGISTIC, help='Selecting the prior distribution that should be used.')
 @click.option('--prior_dist_mu', type=float, default=None, help='Center location of the distribution.')

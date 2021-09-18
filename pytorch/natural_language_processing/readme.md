@@ -96,12 +96,13 @@
 
 #### 相关执行命令
 - 运行以下命令前需要先创建日志目录`log`
+- 由于显存的大小的限制，EmbeddingNF暂时无法使用预训练词向量，目前以随机嵌入替代，嵌入维度为3
 - CVDD+reuters: `python3 main.py reuters cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
     - `--normal_class`可取`0-6`
     - auc: 0/93.88%, 1/90.14%, 2/89.74%, 3/97.93%, 4/82.35%, 5/92.64%, 6/97.62%
-- EmbeddingNF+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --coupling_hidden_layers 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
+- EmbeddingNF+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 3 --coupling_hidden_layers 1 --coupling_num_flows 2 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
     - `--normal_class`可取`0-6`
-    - auc: 0/97.50%, 1/90.11%, 2/89.74%, 3/97.93%, 4/82.35%, 5/92.64%, 6/97.62%
+    - auc: 0/97.84%, 1/90.11%, 2/89.74%, 3/97.93%, 4/82.35%, 5/92.64%, 6/97.62%
 
 
 

@@ -12,6 +12,7 @@ from .preprocessing import compute_tfidf_weights
 
 import torch
 import nltk
+import numpy as np 
 
 
 class Newsgroups20_Dataset(TorchnlpDataset):
@@ -104,6 +105,12 @@ class Newsgroups20_Dataset(TorchnlpDataset):
             row['index'] = i
         for i, row in enumerate(self.test_set):
             row['index'] = i
+
+        # length prior
+        sent_lengths = [len(row['text']) for row in self.train_set]
+        sent_lengths_freq = np.bincount(np.array(sent_lengths))
+        sent_lengths_freq = sent_lengths_freq + 1
+        self.length_prior = np.log(sent_lengths_freq) - np.log(sent_lengths_freq.sum())
 
 
 def newsgroups20_dataset(directory='../data', train=False, test=False, clean_txt=False):
