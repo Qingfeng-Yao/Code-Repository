@@ -1,5 +1,5 @@
 from base.base_net import BaseNet
-from .flow_models import AutoregressiveLSTMModel, ActNormFlow, InvertibleConv, AutoregressiveMixtureCDFCoupling
+from .flow_models import ActNormFlow, InvertibleConv
 from utils.misc import create_transformer_mask, create_channel_mask
 
 import torch
@@ -7,7 +7,7 @@ import torch.nn as nn
 
 class ENFNet(BaseNet):
     
-    def __init__(self, pretrained_model, coupling_hidden_size=1024, coupling_hidden_layers=2, coupling_num_flows=1, coupling_num_mixtures=64, coupling_dropout=0.0, coupling_input_dropout=0.0, max_seq_len=256):
+    def __init__(self, pretrained_model, coupling_num_flows=1):
         super().__init__()
 
         # Load pretrained model (which provides a hidden representation per word, e.g. word vector or language model)
@@ -15,25 +15,11 @@ class ENFNet(BaseNet):
         self.hidden_size = pretrained_model.embedding_size
 
         # Set normalization flow module
-        self.coupling_hidden_size = coupling_hidden_size
-        self.coupling_hidden_layers = coupling_hidden_layers
         self.coupling_num_flows = coupling_num_flows
-        self.coupling_num_mixtures = coupling_num_mixtures
-        self.coupling_dropout= coupling_dropout
-        self.coupling_input_dropout = coupling_input_dropout
-        model_func = lambda c_out : AutoregressiveLSTMModel(c_in=self.hidden_size, c_out=c_out, max_seq_len=max_seq_len, num_layers=coupling_hidden_layers, hidden_size=coupling_hidden_size, dp_rate=coupling_dropout, input_dp_rate=coupling_input_dropout)
         layers = []
         for flow_index in range(self.coupling_num_flows):
             layers += [ActNormFlow(self.hidden_size)]
-            if flow_index > 0:
-                layers += [InvertibleConv(self.hidden_size)]
-            layers += [
-                AutoregressiveMixtureCDFCoupling(
-                        c_in=self.hidden_size,
-                        model_func=model_func,
-                        block_type="LSTM model",
-                        num_mixtures=coupling_num_mixtures)
-            ]
+            layers += [InvertibleConv(self.hidden_size)]
 
         self.flow_layers = nn.ModuleList(layers)
 

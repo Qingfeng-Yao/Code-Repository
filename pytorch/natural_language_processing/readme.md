@@ -100,15 +100,18 @@
 - CVDD+reuters: `python3 main.py reuters cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
     - `--normal_class`可取`0-6`
     - auc: 0/93.88%, 1/90.14%, 2/89.74%, 3/97.93%, 4/82.35%, 5/92.64%, 6/97.62%
-- EmbeddingNF+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 3 --coupling_hidden_layers 1 --coupling_num_flows 2 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
+- EmbeddingNF+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 3 --coupling_hidden_layers 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0 --coupling_num_flows 2`
     - `--normal_class`可取`0-6`
-    - auc: 0/97.84%, 1/90.11%, 2/89.74%, 3/97.93%, 4/82.35%, 5/92.64%, 6/97.62%
-
-
-
-- CVDD+newsgroups20: `python3 main.py newsgroups20 cvdd_Net ../log/test_newsgroups20 ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
+    - auc: 0/97.36%(1), 1/88.97%(2), 2/89.74%, 3/97.93%, 4/82.35%, 5/92.64%, 6/97.62%
+- CVDD+newsgroups20: `python3 main.py newsgroups20 cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
     - `--normal_class`可取`0-5`
-    - auc: 0/74.22%, 1/59.90%, 2/58.05%, 3/75.24%, 4/71.05%, 5/77.78%
+    - auc: 0/74.30%, 1/88.97%, 2/58.05%, 3/75.24%, 4/71.05%, 5/77.78%
+- EmbeddingNF+newsgroups20: `python3 main.py newsgroups20 EmbeddingNF ../log ../data --seed 1 --clean_txt --pretrained_model bert --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0 --coupling_num_flows 1 --max_seq_len 7337`
+    - `--normal_class`可取`0-5`
+    - auc: 0/, 1/59.90%, 2/58.05%, 3/75.24%, 4/71.05%, 5/77.78%
+
+
+
 - CVDD+imdb: `python3 main.py imdb cvdd_Net ../log/test_imdb ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
     - `--normal_class`可取`0-1`
     - auc: 0/46.44%, 1/56.27%

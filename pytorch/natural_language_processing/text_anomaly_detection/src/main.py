@@ -35,17 +35,10 @@ from datasets.main import load_dataset
                                  'bert']),
               help='Load pre-trained word vectors or language models to initialize the word embeddings.')
 
-@click.option('--coupling_input_dropout', type=float, default=0.0,
-              help='Input dropout rate to use in the networks.')
-@click.option('--coupling_dropout', type=float, default=0.0,
-              help='Dropout to use in the networks.')
-@click.option('--coupling_hidden_size', type=int, default=1024, help='Hidden size of the coupling layers.')
-@click.option('--coupling_hidden_layers', type=int, default=2, help='Number of hidden layers in the coupling layers.')
 @click.option('--coupling_num_flows', type=int, default=2, help='Number of coupling layers to use.')
-@click.option('--coupling_num_mixtures', type=int, default=64, help='Number of mixtures used in the coupling layers.')
-@click.option('--max_seq_len', type=int, default=64, help='Maximum sequence length. reuters: 550, newsgroups20: 7337, imdb: 1400')
+@click.option('--max_seq_len', type=int, default=None, help='Maximum sequence length. reuters: 550, newsgroups20: 7337, imdb: 1400. Used in length prior. If None, then not use length prior.')
 
-@click.option('--prior_dist_type', type=click.Choice([PriorDistribution.LOGISTIC, PriorDistribution.GAUSSIAN]), default=PriorDistribution.LOGISTIC, help='Selecting the prior distribution that should be used.')
+@click.option('--prior_dist_type', type=click.Choice([PriorDistribution.LOGISTIC, PriorDistribution.GAUSSIAN]), default=PriorDistribution.GAUSSIAN, help='Selecting the prior distribution that should be used.')
 @click.option('--prior_dist_mu', type=float, default=None, help='Center location of the distribution.')
 @click.option('--prior_dist_sigma', type=float, default=None, help='Scaling of the distribution.')
 @click.option('--prior_dist_start_x', type=float, default=None, help='If distribution is bounded, but should be shifted, this parameter determines the start position.')
@@ -77,7 +70,7 @@ from datasets.main import load_dataset
 @click.option('--normal_class', type=int, default=0,
               help='Specify the normal class of the dataset (all other classes are considered anomalous).')
 def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, device, seed, tokenizer, clean_txt,
-         embedding_size, pretrained_model, coupling_input_dropout, coupling_dropout, coupling_hidden_size, coupling_hidden_layers, coupling_num_flows, coupling_num_mixtures, max_seq_len, prior_dist_type, prior_dist_mu, prior_dist_sigma, prior_dist_start_x, prior_dist_stop_x, ad_score, n_attention_heads, attention_size, lambda_p, alpha_scheduler,
+         embedding_size, pretrained_model, coupling_num_flows, max_seq_len, prior_dist_type, prior_dist_mu, prior_dist_sigma, prior_dist_start_x, prior_dist_stop_x, ad_score, n_attention_heads, attention_size, lambda_p, alpha_scheduler,
          optimizer_name, lr, n_epochs, lr_milestone, batch_size, weight_decay, n_jobs_dataloader, n_threads,
          normal_class):
     """
@@ -144,7 +137,7 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, de
 
     # Load data
     dataset = load_dataset(dataset_name, data_path, normal_class, cfg.settings['tokenizer'],
-                           clean_txt=cfg.settings['clean_txt'])
+                           clean_txt=cfg.settings['clean_txt'], max_seq_len=cfg.settings['max_seq_len'])
 
     if net_name == 'EmbeddingNF':
         # Initialize EmbeddingNF model and set word embedding
@@ -153,13 +146,7 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, de
                         dataset=dataset,
                         pretrained_model=cfg.settings['pretrained_model'],
                         embedding_size=cfg.settings['embedding_size'],
-                        coupling_hidden_size=cfg.settings['coupling_hidden_size'],
-                        coupling_hidden_layers=cfg.settings['coupling_hidden_layers'],
-                        coupling_num_flows=cfg.settings['coupling_num_flows'],
-                        coupling_num_mixtures=cfg.settings['coupling_num_mixtures'],
-                        coupling_dropout=cfg.settings['coupling_dropout'],
-                        coupling_input_dropout=cfg.settings['coupling_input_dropout'],
-                        max_seq_len=cfg.settings['max_seq_len'])
+                        coupling_num_flows=cfg.settings['coupling_num_flows'])
 
         # If specified, load model parameters from already trained model
         if load_model:
@@ -180,6 +167,7 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, de
                 n_epochs=cfg.settings['n_epochs'],
                 lr_milestones=cfg.settings['lr_milestone'],
                 batch_size=cfg.settings['batch_size'],
+                max_seq_length_prior=cfg.settings['max_seq_len'],
                 prior_dist_params=prior_dist_params,
                 weight_decay=cfg.settings['weight_decay'],
                 device=device,

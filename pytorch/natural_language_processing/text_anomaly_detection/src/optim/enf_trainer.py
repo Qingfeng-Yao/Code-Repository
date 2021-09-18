@@ -15,16 +15,20 @@ import numpy as np
 class ENFTrainer(BaseTrainer):
 
     def __init__(self, optimizer_name: str = 'adam', lr: float = 0.001, n_epochs: int = 150, lr_milestones: tuple = (),
-                 batch_size: int = 128, prior_dist_params: dict = {}, weight_decay: float = 1e-6, device: str = 'cuda', n_jobs_dataloader: int = 0):
+                 batch_size: int = 128, max_seq_length_prior: int = None, prior_dist_params: dict = {}, weight_decay: float = 1e-6, device: str = 'cuda', n_jobs_dataloader: int = 0):
         super().__init__(optimizer_name, lr, n_epochs, lr_milestones, batch_size, weight_decay, device,
                          n_jobs_dataloader)
         self.prior_distribution = create_prior_distribution(prior_dist_params)
         self.test_auc = 0.0
         self.test_scores = None
+        self.max_seq_length_prior = max_seq_length_prior
 
     def train(self, dataset: BaseADDataset, net: ENFNet):
         logger = logging.getLogger()
-        length_prior = dataset.length_prior
+        if self.max_seq_length_prior is not None:
+            length_prior = dataset.length_prior
+        else:
+            length_prior = None
 
         # Set device for network
         net = net.to(self.device)
@@ -113,7 +117,10 @@ class ENFTrainer(BaseTrainer):
 
     def test(self, dataset: BaseADDataset, net: ENFNet):
         logger = logging.getLogger()
-        length_prior = dataset.length_prior
+        if self.max_seq_length_prior is not None:
+            length_prior = dataset.length_prior
+        else:
+            length_prior = None
 
         # Set device for network
         net = net.to(self.device)
