@@ -3,9 +3,6 @@ from base.base_dataset import BaseADDataset
 from networks.enf_Net import ENFNet
 from sklearn.metrics import roc_auc_score
 
-from utils.distributions import create_prior_distribution
-from utils.misc import create_channel_mask
-
 import logging
 import time
 import torch
@@ -15,20 +12,14 @@ import numpy as np
 class ENFTrainer(BaseTrainer):
 
     def __init__(self, optimizer_name: str = 'adam', lr: float = 0.001, n_epochs: int = 150, lr_milestones: tuple = (),
-                 batch_size: int = 128, use_length_prior: bool = False, prior_dist_params: dict = {}, weight_decay: float = 1e-6, device: str = 'cuda', n_jobs_dataloader: int = 0):
+                 batch_size: int = 128, weight_decay: float = 1e-6, device: str = 'cuda', n_jobs_dataloader: int = 0):
         super().__init__(optimizer_name, lr, n_epochs, lr_milestones, batch_size, weight_decay, device,
                          n_jobs_dataloader)
-        self.prior_distribution = create_prior_distribution(prior_dist_params)
         self.test_auc = 0.0
         self.test_scores = None
-        self.use_length_prior = use_length_prior
 
     def train(self, dataset: BaseADDataset, net: ENFNet):
         logger = logging.getLogger()
-        if self.use_length_prior:
-            self.length_prior = dataset.length_prior
-        else:
-            self.length_prior = None
 
         # Set device for network
         net = net.to(self.device)
@@ -58,23 +49,13 @@ class ENFTrainer(BaseTrainer):
                 length_batch = length_batch.to(self.device)
                 # text_batch.shape = (sentence_length, batch_size)
                 # length_batch.shape = (batch_size, )
-                x_channel_mask = create_channel_mask(length_batch, max_len=text_batch.size(0))
-                # x_channel_mask.shape = (batch_size, sentence_length, 1)
 
                 # Zero the network parameter gradients
                 optimizer.zero_grad()
 
                 # Update network parameters via backpropagation: forward + backward + optimize
                 # forward pass
-                z, ldj = net(text_batch, length_batch)
-                # z.shape = (batch_size, sentence_length, hidden_size)
-                # ldj.shape = (batch_size, )
-
-                # compute loss
-                neglog_prob = -(self.prior_distribution.log_prob(z) * x_channel_mask).sum(dim=[1,2])
-                neg_ldj = -ldj
-                
-                loss, _ = self._calc_loss(neg_ldj, neglog_prob, length_batch, self.length_prior)
+                loss, _ = net(text_batch, length_batch)
 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(net.parameters(), 0.5)  # clip gradient norms in [-0.5, 0.5]
@@ -97,24 +78,6 @@ class ENFTrainer(BaseTrainer):
 
         return net
 
-    def _calc_loss(self, neg_ldj, neglog_prob, x_length, length_prior):
-        if length_prior is None:
-            neg_ldj = (neg_ldj / x_length.float())
-            neglog_prob = (neglog_prob / x_length.float())
-            loss = neg_ldj + neglog_prob
-        else:
-            neg_ldj = (neg_ldj / (x_length+1).float())
-            neglog_prob = (neglog_prob / (x_length+1).float())
-            # Prior for timestep
-            log_p_T = [length_prior[l]*1.0/(l+1) for l in x_length.detach().cpu().numpy()]
-            log_p_T = torch.FloatTensor(log_p_T).to(self.device)
-            loss = neg_ldj + neglog_prob + log_p_T
-
-        loss_mean = loss.mean()
-        neg_ldj = neg_ldj.mean()
-        neglog_prob = neglog_prob.mean()
-        return loss_mean, loss
-
     def test(self, dataset: BaseADDataset, net: ENFNet):
         logger = logging.getLogger()
 
@@ -135,14 +98,9 @@ class ENFTrainer(BaseTrainer):
             for data in test_loader:
                 idx, length_batch, text_batch, label_batch, _ = data
                 text_batch, length_batch, label_batch = text_batch.to(self.device), length_batch.to(self.device), label_batch.to(self.device)
-                x_channel_mask = create_channel_mask(length_batch, max_len=text_batch.size(0))
 
                 # forward pass
-                z, ldj = net(text_batch, length_batch)
-                neglog_prob = -(self.prior_distribution.log_prob(z) * x_channel_mask).sum(dim=[1,2])
-                neg_ldj = -ldj
-                
-                loss, ad_scores = self._calc_loss(neg_ldj, neglog_prob, length_batch, self.length_prior)
+                loss, ad_scores = net(text_batch, length_batch)
 
                 # Save tuples of (idx, label, score) in a list
                 idx_label_score += list(zip(idx,

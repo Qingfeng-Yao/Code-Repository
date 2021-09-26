@@ -26,7 +26,7 @@ from datasets.main import load_dataset
               help='Config JSON-file path (default: None).')
 @click.option('--load_model', type=click.Path(exists=True), default=None,
               help='Model file path (default: None).')
-@click.option('--device', type=str, default='cuda:2', help='Computation device to use ("cpu", "cuda", "cuda:2", etc.).')
+@click.option('--device', type=str, default='cuda:1', help='Computation device to use ("cpu", "cuda", "cuda:2", etc.).')
 @click.option('--seed', type=int, default=-1, help='Set seed. If -1, use randomization.')
 @click.option('--tokenizer', default='spacy', type=click.Choice(['spacy', 'bert']), help='Select text tokenizer.')
 @click.option('--clean_txt', is_flag=True, help='Specify if text should be cleaned in a pre-processing step.')
@@ -37,6 +37,7 @@ from datasets.main import load_dataset
               help='Load pre-trained word vectors or language models to initialize the word embeddings.')
 
 @click.option('--num_dimensions', type=int, default=3, help='Dimensionality of the embeddings.')
+@click.option('--flow_type', type=click.Choice(['maf', 'glow', 'realnvp', 'maf-split', 'maf-split-glow']), default='maf', help='Selecting the flow in the embeddingNF.')
 
 @click.option('--coupling_hidden_size', type=int, default=1024, help='Hidden size of the coupling layers.')
 @click.option('--coupling_hidden_layers', type=int, default=2, help='Number of hidden layers in the coupling layers.')
@@ -80,7 +81,7 @@ from datasets.main import load_dataset
 @click.option('--normal_class', type=int, default=0,
               help='Specify the normal class of the dataset (all other classes are considered anomalous).')
 def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, device, seed, tokenizer, clean_txt,
-         embedding_size, pretrained_model, num_dimensions, coupling_hidden_size, coupling_hidden_layers, coupling_num_flows, coupling_num_mixtures, coupling_dropout, coupling_input_dropout, max_seq_len, use_length_prior, use_time_embed, prior_dist_type, prior_dist_mu, prior_dist_sigma, prior_dist_start_x, prior_dist_stop_x, ad_score, n_attention_heads, attention_size, lambda_p, alpha_scheduler,
+         embedding_size, pretrained_model, num_dimensions, flow_type, coupling_hidden_size, coupling_hidden_layers, coupling_num_flows, coupling_num_mixtures, coupling_dropout, coupling_input_dropout, max_seq_len, use_length_prior, use_time_embed, prior_dist_type, prior_dist_mu, prior_dist_sigma, prior_dist_start_x, prior_dist_stop_x, ad_score, n_attention_heads, attention_size, lambda_p, alpha_scheduler,
          optimizer_name, lr, n_epochs, lr_milestone, batch_size, weight_decay, n_jobs_dataloader, n_threads,
          normal_class):
     """
@@ -205,14 +206,11 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, de
                         dataset=dataset,
                         pretrained_model=cfg.settings['pretrained_model'],
                         embedding_size=cfg.settings['embedding_size'],
+                        flow_type=cfg.settings['flow_type'],
                         coupling_hidden_size=cfg.settings['coupling_hidden_size'],
-                        coupling_hidden_layers=cfg.settings['coupling_hidden_layers'],
                         coupling_num_flows=cfg.settings['coupling_num_flows'],
-                        coupling_num_mixtures=cfg.settings['coupling_num_mixtures'],
-                        coupling_dropout=cfg.settings['coupling_dropout'],
-                        coupling_input_dropout=cfg.settings['coupling_input_dropout'],
-                        max_seq_len=cfg.settings['max_seq_len'],
-                        use_time_embed=cfg.settings['use_time_embed'])
+                        use_length_prior=cfg.settings['use_length_prior'],
+                        device=cfg.settings['device'])
 
         # If specified, load model parameters from already trained model
         if load_model:
@@ -220,21 +218,12 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, de
             logger.info('Loading model from %s.' % load_model)
 
         # Train model on dataset
-        prior_dist_params = {
-        "distribution_type": cfg.settings['prior_dist_type'],
-        "mu": cfg.settings['prior_dist_mu'],
-        "sigma": cfg.settings['prior_dist_sigma'],
-        "start_x": cfg.settings['prior_dist_start_x'],
-        "stop_x": cfg.settings['prior_dist_stop_x']
-        }
         enf.train(dataset,
                 optimizer_name=cfg.settings['optimizer_name'],
                 lr=cfg.settings['lr'],
                 n_epochs=cfg.settings['n_epochs'],
                 lr_milestones=cfg.settings['lr_milestone'],
                 batch_size=cfg.settings['batch_size'],
-                use_length_prior=cfg.settings['use_length_prior'],
-                prior_dist_params=prior_dist_params,
                 weight_decay=cfg.settings['weight_decay'],
                 device=device,
                 n_jobs_dataloader=n_jobs_dataloader)

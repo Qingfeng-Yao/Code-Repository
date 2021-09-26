@@ -1,5 +1,5 @@
 from base.base_net import BaseNet
-from .flow_models import LinearCategoricalEncoding, AutoregressiveLSTMModel, ActNormFlow, InvertibleConv, AutoregressiveMixtureCDFCoupling
+from .cnf_flow_models import LinearCategoricalEncoding, AutoregressiveLSTMModel, ActNormFlow, InvertibleConv, AutoregressiveMixtureCDFCoupling
 from utils.misc import create_transformer_mask, create_channel_mask
 
 import torch

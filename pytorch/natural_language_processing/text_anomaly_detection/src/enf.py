@@ -17,18 +17,18 @@ class EmbeddingNF(object):
         self.trainer = None
         self.optimizer_name = None
 
-    def set_network(self, net_name, dataset, pretrained_model, embedding_size=None, coupling_hidden_size=None, coupling_hidden_layers=None, coupling_num_flows=None, coupling_num_mixtures=None, coupling_dropout=None, coupling_input_dropout=None, max_seq_len=None, use_time_embed=None):
+    def set_network(self, net_name, dataset, pretrained_model, embedding_size=None, flow_type=None, coupling_hidden_size=None, coupling_num_flows=None, use_length_prior=True, device='cuda'):
         """Builds the EmbeddingNF network composed of a pretrained_model and a normalization flow module."""
         self.net_name = net_name
-        self.net = build_network(net_name, dataset, embedding_size=embedding_size, pretrained_model=pretrained_model,
-                                 update_embedding=False, coupling_hidden_size=coupling_hidden_size, coupling_hidden_layers=coupling_hidden_layers, coupling_num_flows=coupling_num_flows, coupling_num_mixtures=coupling_num_mixtures, coupling_dropout=coupling_dropout, coupling_input_dropout=coupling_input_dropout, max_seq_len=max_seq_len, use_time_embed=use_time_embed)
+        self.net = build_network(net_name, dataset, embedding_size=embedding_size, pretrained_model=pretrained_model, flow_type=flow_type, 
+                                 update_embedding=True, coupling_hidden_size=coupling_hidden_size, coupling_num_flows=coupling_num_flows, use_length_prior=use_length_prior, device=device)
 
     def train(self, dataset: BaseADDataset, optimizer_name: str = 'adam', lr: float = 0.001, n_epochs: int = 25,
-              lr_milestones: tuple = (), batch_size: int = 64, use_length_prior: bool = False, prior_dist_params: dict = {}, weight_decay: float = 0.5e-6, device: str = 'cuda',
+              lr_milestones: tuple = (), batch_size: int = 64, weight_decay: float = 0.5e-6, device: str = 'cuda',
               n_jobs_dataloader: int = 0):
         """Trains the EmbeddingNF model on the training data."""
         self.optimizer_name = optimizer_name
-        self.trainer = ENFTrainer(optimizer_name, lr, n_epochs, lr_milestones, batch_size, use_length_prior, prior_dist_params, weight_decay, device, n_jobs_dataloader)
+        self.trainer = ENFTrainer(optimizer_name, lr, n_epochs, lr_milestones, batch_size, weight_decay, device, n_jobs_dataloader)
         self.net = self.trainer.train(dataset, self.net)
 
     def test(self, dataset: BaseADDataset, device: str = 'cuda', n_jobs_dataloader: int = 0):

@@ -99,31 +99,27 @@
 
 #### 相关执行命令
 - 运行以下命令前需要先创建日志目录`log`
-- CNF无法使用预训练词嵌入，需要使用更大的显存，暂时只能处理reuters
+- CNF无法使用预训练词嵌入，需要使用更大的显存，目前暂无结果
+- EmbeddingNF中训练或测试会出现损失为inf或nan的情况
 - CVDD+reuters: `python3 main.py reuters cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 550 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
     - `--normal_class`可取`0-6`
     - auc: 0/93.88%, 1/90.14%, 2/89.63%, 3/98.18%, 4/77.73%, 5/92.86%, 6/97.64%
 - CNF+reuters: `python3 main.py reuters CNF ../log ../data --seed 1 --clean_txt  --num_dimensions 3 --coupling_hidden_layers 1 --coupling_num_flows 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --use_length_prior --use_time_embed --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
     - `--normal_class`可取`0-6`
     - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%, 6/
-
-
-
-- EmbeddingNF+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --coupling_hidden_layers 1 --coupling_num_flows 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --use_length_prior --use_time_embed --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
+- EmbeddingNF+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --flow_type maf --coupling_num_flows 5 --use_length_prior --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
     - `--normal_class`可取`0-6`
     - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%, 6/%
+
 - CVDD+newsgroups20: `python3 main.py newsgroups20 cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 7337 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
     - `--normal_class`可取`0-5`
     - auc: 0/74.30%, 1/60.02%, 2/58.14%, 3/75.64%, 4/71.06%, 5/77.88%
-
-
-
-
-- EmbeddingNF+newsgroups20: `python3 main.py newsgroups20 EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 3 --coupling_hidden_layers 1 --coupling_num_flows 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --max_seq_len 7337 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
+- CNF+newsgroups20: `python3 main.py newsgroups20 CNF ../log ../data --seed 1 --clean_txt  --num_dimensions 3 --coupling_hidden_layers 1 --coupling_num_flows 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --use_length_prior --use_time_embed --max_seq_len 7337 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
     - `--normal_class`可取`0-5`
-    - auc: 0/80.64%, 1/59.90%, 2/58.05%, 3/75.24%, 4/71.05%, 5/77.78%
-
-
+    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%
+- EmbeddingNF+newsgroups20: `python3 main.py newsgroups20 EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --flow_type maf --coupling_num_flows 5 --use_length_prior --max_seq_len 7337 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
+    - `--normal_class`可取`0-5`
+    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%
 
 - CVDD+imdb: `python3 main.py imdb cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 1400 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
     - `--normal_class`可取`0-1`
