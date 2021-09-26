@@ -256,9 +256,14 @@ class TaskTemplate:
 	####################
 
 	@staticmethod
-	def batch_to_device(batch):
+	def batch_to_device(batch): # batch is a list
 		if isinstance(batch, tuple) or isinstance(batch, list):
+			# print(len(batch)) # 2
+			# print(batch[0].device, batch[1].device) # cpu
 			batch = tuple([b.to(get_device()) for b in batch])
+			# print(batch[0].device, batch[1].device) # cuda
+			# print(batch[0].shape, batch[1].shape) # torch.Size([128, 288]) torch.Size([128])
+			# print(batch[1][0], type(batch[1][0]), batch[1][0].device) type/<class 'torch.Tensor'>, device/cuda
 		else:
 			batch = batch.to(get_device())
 		return batch

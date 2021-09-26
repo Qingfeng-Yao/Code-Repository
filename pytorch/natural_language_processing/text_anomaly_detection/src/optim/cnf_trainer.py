@@ -1,6 +1,6 @@
 from base.base_trainer import BaseTrainer
 from base.base_dataset import BaseADDataset
-from networks.enf_Net import ENFNet
+from networks.cnf_Net import CNFNet
 from sklearn.metrics import roc_auc_score
 
 from utils.distributions import create_prior_distribution
@@ -12,7 +12,7 @@ import torch
 import torch.optim as optim
 import numpy as np
 
-class ENFTrainer(BaseTrainer):
+class CNFTrainer(BaseTrainer):
 
     def __init__(self, optimizer_name: str = 'adam', lr: float = 0.001, n_epochs: int = 150, lr_milestones: tuple = (),
                  batch_size: int = 128, use_length_prior: bool = False, prior_dist_params: dict = {}, weight_decay: float = 1e-6, device: str = 'cuda', n_jobs_dataloader: int = 0):
@@ -23,7 +23,7 @@ class ENFTrainer(BaseTrainer):
         self.test_scores = None
         self.use_length_prior = use_length_prior
 
-    def train(self, dataset: BaseADDataset, net: ENFNet):
+    def train(self, dataset: BaseADDataset, net: CNFNet):
         logger = logging.getLogger()
         if self.use_length_prior:
             self.length_prior = dataset.length_prior
@@ -115,7 +115,7 @@ class ENFTrainer(BaseTrainer):
         neglog_prob = neglog_prob.mean()
         return loss_mean, loss
 
-    def test(self, dataset: BaseADDataset, net: ENFNet):
+    def test(self, dataset: BaseADDataset, net: CNFNet):
         logger = logging.getLogger()
 
         # Set device for network

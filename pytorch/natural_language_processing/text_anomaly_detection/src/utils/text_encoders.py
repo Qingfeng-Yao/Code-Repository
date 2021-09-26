@@ -8,8 +8,8 @@ import torch
 class MyBertTokenizer(BertTokenizer):
     """ Patch of pytorch_pretrained_bert.BertTokenizer to fit torchnlp TextEncoder() interface. """
 
-    def __init__(self, vocab_file, do_lower_case=True, append_eos=False):
-        super().__init__(vocab_file, do_lower_case=do_lower_case)
+    def __init__(self, vocab_file, do_lower_case=True, max_len=None, append_eos=False):
+        super().__init__(vocab_file, do_lower_case=do_lower_case, max_len=max_len)
         self.append_eos = append_eos
 
         self.itos = list(self.vocab.keys())

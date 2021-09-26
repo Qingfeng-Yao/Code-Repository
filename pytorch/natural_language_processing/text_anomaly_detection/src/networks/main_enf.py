@@ -6,7 +6,7 @@ from utils.word_vectors import load_word_vectors
 
 def build_network(net_name, dataset, embedding_size=None, pretrained_model=None, update_embedding=True,
                   embedding_reduction='none', use_tfidf_weights=False, normalize_embedding=False,
-                  word_vectors_cache='../data/word_vectors_cache', coupling_num_flows=1):
+                  word_vectors_cache='../data/word_vectors_cache', coupling_hidden_size=1024, coupling_hidden_layers=2, coupling_num_flows=1, coupling_num_mixtures=64, coupling_dropout=0.0, coupling_input_dropout=0.0, max_seq_len=None, use_time_embed=False):
     """Builds the neural network."""
 
     net = None
@@ -34,5 +34,5 @@ def build_network(net_name, dataset, embedding_size=None, pretrained_model=None,
         else:
             raise Exception('If pretrained_model is None, embedding_size must be specified')
 
-    net = ENFNet(embedding, coupling_num_flows=coupling_num_flows)
+    net = ENFNet(embedding, coupling_hidden_size=coupling_hidden_size, coupling_hidden_layers=coupling_hidden_layers, coupling_num_flows=coupling_num_flows, coupling_num_mixtures=coupling_num_mixtures, coupling_dropout=coupling_dropout, coupling_input_dropout=coupling_input_dropout, max_seq_len=max_seq_len, use_time_embed=use_time_embed)
     return net

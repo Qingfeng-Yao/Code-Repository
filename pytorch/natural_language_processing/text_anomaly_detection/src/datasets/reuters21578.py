@@ -114,13 +114,12 @@ class Reuters_Dataset(TorchnlpDataset):
         for i, row in enumerate(self.test_set):
             row['index'] = i
 
-        # length prior
-        if max_seq_len_prior is not None:
-            sent_lengths = [len(row['text']) for row in self.train_set]
-            sent_lengths_freq = np.bincount(np.array(sent_lengths))
-            sent_lengths_freq = np.concatenate((sent_lengths_freq, np.array((max_seq_len_prior-max(sent_lengths))*[0])), axis=0)
-            sent_lengths_freq = sent_lengths_freq + 1
-            self.length_prior = np.log(sent_lengths_freq) - np.log(sent_lengths_freq.sum())
+        # # length prior
+        sent_lengths = [len(row['text']) for row in self.train_set]
+        sent_lengths_freq = np.bincount(np.array(sent_lengths))
+        sent_lengths_freq = np.concatenate((sent_lengths_freq, np.array((max_seq_len_prior-max(sent_lengths))*[0])), axis=0)
+        sent_lengths_freq = sent_lengths_freq + 1
+        self.length_prior = np.log(sent_lengths_freq) - np.log(sent_lengths_freq.sum())
 
 def reuters_dataset(directory='../data', train=True, test=False, clean_txt=False):
     """

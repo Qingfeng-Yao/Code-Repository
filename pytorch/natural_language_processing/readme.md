@@ -73,15 +73,16 @@
 
 ### text anomaly detection
 #### 数据集
-- 分别统计每个数据集以每个类为正常数据时的训练集(只包含正常数据)、测试集(同时包含正常数据和异常数据)、词汇表大小以及默认配置下的最长序列长度，数值在下面每个类别后的括号内
+- 分别统计每个数据集以每个类为正常数据时的训练集(只包含正常数据)、测试集(同时包含正常数据和异常数据)以及默认配置下的最长序列长度，数值在下面每个类别后的括号内
+- 词汇表大小(可依据SpacyEncoder中的min_occurrences调整词汇表大小，默认为3)
 - Reuters-21578
-    - 共7类: earn(2840/1083/1097/6714/494), acq(1596/696/1484/7524/502), crude(253/121/2059/5623/484), trade(250/76/2104/5713/524), money-fx(222/87/2093/5444/502), interest(191/81/2099/5240/484), ship(108/36/2144/5272/484)
+    - 共7类: earn(2840/1083/1097/494), acq(1596/696/1484/502), crude(253/121/2059/484), trade(250/76/2104/524), money-fx(222/87/2093/502), interest(191/81/2099/484), ship(108/36/2144/484)
     - 测试集的总大小均是2180
 - 20 Newsgroups
-    - 共6类: comp(2857/1909/5390/25818/7337), rec(2301/1524/5775/23578/7337), sci(2311/1520/5779/24873/7337), misc(577/382/6917/21389/7337), pol(1531/1025/6274/24015/7337), rel(1419/939/6360/22935/7337)
+    - 共6类: comp(2857/1909/5390/7337), rec(2301/1524/5775/7337), sci(2311/1520/5779/7337), misc(577/382/6917/7337), pol(1531/1025/6274/7337), rel(1419/939/6360/7337)
     - 测试集的总大小均是7299
 - IMDB
-    - 共2类: pos(12500/12500/12500/44424/1390), neg(12500/12500/12500/43442/1132)
+    - 共2类: pos(12500/12500/12500/1390), neg(12500/12500/12500/1132)
     - 测试集的总大小均是25000
 - 先创建目录`data`，然后进入`src`，对`Reuters-21578`，执行`import nltk;nltk.download('reuters', download_dir='../data');nltk.download('stopwords', download_dir='../data');nltk.download('punkt', download_dir='../data')`；其余两个数据集以及相应的预训练词向量会自动下载
 - 上述文本均经过如下的预处理: 小写；移除标点、前后空格、停用词和长度小于3的词
@@ -91,27 +92,39 @@
 #### 模型
 - CVDD
     - 引入自注意力机制学习序列的表示，同时引入相同形状的可学习上下文向量，异常分数定义为输入序列与上下文向量之间的余弦距离
+- CNF 
+    - 引入CNF计算序列的离散似然，并以负对数似然为异常分数
 - EmbeddingNF
-    - 引入标准化流计算序列的似然，并以负对数似然为异常分数
+    - 引入标准化流计算序列的嵌入似然，并以负对数似然为异常分数
 
 #### 相关执行命令
 - 运行以下命令前需要先创建日志目录`log`
-- 由于显存的大小的限制，EmbeddingNF暂时无法使用预训练词向量，目前以随机嵌入替代，嵌入维度为3
-- CVDD+reuters: `python3 main.py reuters cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
+- CNF无法使用预训练词嵌入，需要使用更大的显存，暂时只能处理reuters
+- CVDD+reuters: `python3 main.py reuters cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 550 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
     - `--normal_class`可取`0-6`
-    - auc: 0/93.88%, 1/90.14%, 2/89.74%, 3/97.93%, 4/82.35%, 5/92.64%, 6/97.62%
-- EmbeddingNF+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 3 --coupling_hidden_layers 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0 --coupling_num_flows 2`
+    - auc: 0/93.88%, 1/90.14%, 2/89.63%, 3/98.18%, 4/77.73%, 5/92.86%, 6/97.64%
+- CNF+reuters: `python3 main.py reuters CNF ../log ../data --seed 1 --clean_txt  --num_dimensions 3 --coupling_hidden_layers 1 --coupling_num_flows 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --use_length_prior --use_time_embed --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
     - `--normal_class`可取`0-6`
-    - auc: 0/97.36%(1), 1/88.97%(2), 2/89.74%, 3/97.93%, 4/82.35%, 5/92.64%, 6/97.62%
-- CVDD+newsgroups20: `python3 main.py newsgroups20 cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
+    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%, 6/
+
+
+
+- EmbeddingNF+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --coupling_hidden_layers 1 --coupling_num_flows 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --use_length_prior --use_time_embed --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
+    - `--normal_class`可取`0-6`
+    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%, 6/%
+- CVDD+newsgroups20: `python3 main.py newsgroups20 cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 7337 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
     - `--normal_class`可取`0-5`
-    - auc: 0/74.30%, 1/88.97%, 2/58.05%, 3/75.24%, 4/71.05%, 5/77.78%
-- EmbeddingNF+newsgroups20: `python3 main.py newsgroups20 EmbeddingNF ../log ../data --seed 1 --clean_txt --pretrained_model bert --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0 --coupling_num_flows 1 --max_seq_len 7337`
+    - auc: 0/74.30%, 1/60.02%, 2/58.14%, 3/75.64%, 4/71.06%, 5/77.88%
+
+
+
+
+- EmbeddingNF+newsgroups20: `python3 main.py newsgroups20 EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 3 --coupling_hidden_layers 1 --coupling_num_flows 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --max_seq_len 7337 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
     - `--normal_class`可取`0-5`
-    - auc: 0/, 1/59.90%, 2/58.05%, 3/75.24%, 4/71.05%, 5/77.78%
+    - auc: 0/80.64%, 1/59.90%, 2/58.05%, 3/75.24%, 4/71.05%, 5/77.78%
 
 
 
-- CVDD+imdb: `python3 main.py imdb cvdd_Net ../log/test_imdb ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
+- CVDD+imdb: `python3 main.py imdb cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 1400 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
     - `--normal_class`可取`0-1`
-    - auc: 0/46.44%, 1/56.27%
+    - auc: 0/46.39%, 1/56.26%

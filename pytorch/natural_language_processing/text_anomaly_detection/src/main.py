@@ -10,6 +10,7 @@ from utils.distributions import PriorDistribution
 
 from cvdd import CVDD
 from enf import EmbeddingNF
+from cnf import CNF
 from datasets.main import load_dataset
 
 
@@ -18,14 +19,14 @@ from datasets.main import load_dataset
 ################################################################################
 @click.command()
 @click.argument('dataset_name', type=click.Choice(['reuters', 'newsgroups20', 'imdb']))
-@click.argument('net_name', type=click.Choice(['cvdd_Net', 'EmbeddingNF']))
+@click.argument('net_name', type=click.Choice(['cvdd_Net', 'CNF', 'EmbeddingNF']))
 @click.argument('xp_path', type=click.Path(exists=True))
 @click.argument('data_path', type=click.Path(exists=True))
 @click.option('--load_config', type=click.Path(exists=True), default=None,
               help='Config JSON-file path (default: None).')
 @click.option('--load_model', type=click.Path(exists=True), default=None,
               help='Model file path (default: None).')
-@click.option('--device', type=str, default='cuda:1', help='Computation device to use ("cpu", "cuda", "cuda:2", etc.).')
+@click.option('--device', type=str, default='cuda:2', help='Computation device to use ("cpu", "cuda", "cuda:2", etc.).')
 @click.option('--seed', type=int, default=-1, help='Set seed. If -1, use randomization.')
 @click.option('--tokenizer', default='spacy', type=click.Choice(['spacy', 'bert']), help='Select text tokenizer.')
 @click.option('--clean_txt', is_flag=True, help='Specify if text should be cleaned in a pre-processing step.')
@@ -35,8 +36,17 @@ from datasets.main import load_dataset
                                  'bert']),
               help='Load pre-trained word vectors or language models to initialize the word embeddings.')
 
-@click.option('--coupling_num_flows', type=int, default=2, help='Number of coupling layers to use.')
-@click.option('--max_seq_len', type=int, default=None, help='Maximum sequence length. reuters: 550, newsgroups20: 7337, imdb: 1400. Used in length prior. If None, then not use length prior.')
+@click.option('--num_dimensions', type=int, default=3, help='Dimensionality of the embeddings.')
+
+@click.option('--coupling_hidden_size', type=int, default=1024, help='Hidden size of the coupling layers.')
+@click.option('--coupling_hidden_layers', type=int, default=2, help='Number of hidden layers in the coupling layers.')
+@click.option('--coupling_num_flows', type=int, default=1, help='Number of coupling layers to use.')
+@click.option('--coupling_num_mixtures', type=int, default=64, help='Number of mixtures used in the coupling layers.')
+@click.option('--coupling_dropout', type=float, default=0.0, help='Number of coupling layers to use.')
+@click.option('--coupling_input_dropout', type=float, default=0.0, help='Number of coupling layers to use.')
+@click.option('--max_seq_len', type=int, default=None, help='Maximum sequence length. reuters: 550, newsgroups20: 7337, imdb: 1400.')
+@click.option('--use_length_prior', is_flag=True, help='Specify if length prior should be used in loss computation.')
+@click.option('--use_time_embed', is_flag=True, help='Specify if time embeddings should be used in a lstm module.')
 
 @click.option('--prior_dist_type', type=click.Choice([PriorDistribution.LOGISTIC, PriorDistribution.GAUSSIAN]), default=PriorDistribution.GAUSSIAN, help='Selecting the prior distribution that should be used.')
 @click.option('--prior_dist_mu', type=float, default=None, help='Center location of the distribution.')
@@ -70,7 +80,7 @@ from datasets.main import load_dataset
 @click.option('--normal_class', type=int, default=0,
               help='Specify the normal class of the dataset (all other classes are considered anomalous).')
 def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, device, seed, tokenizer, clean_txt,
-         embedding_size, pretrained_model, coupling_num_flows, max_seq_len, prior_dist_type, prior_dist_mu, prior_dist_sigma, prior_dist_start_x, prior_dist_stop_x, ad_score, n_attention_heads, attention_size, lambda_p, alpha_scheduler,
+         embedding_size, pretrained_model, num_dimensions, coupling_hidden_size, coupling_hidden_layers, coupling_num_flows, coupling_num_mixtures, coupling_dropout, coupling_input_dropout, max_seq_len, use_length_prior, use_time_embed, prior_dist_type, prior_dist_mu, prior_dist_sigma, prior_dist_start_x, prior_dist_stop_x, ad_score, n_attention_heads, attention_size, lambda_p, alpha_scheduler,
          optimizer_name, lr, n_epochs, lr_milestone, batch_size, weight_decay, n_jobs_dataloader, n_threads,
          normal_class):
     """
@@ -138,15 +148,71 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, de
     # Load data
     dataset = load_dataset(dataset_name, data_path, normal_class, cfg.settings['tokenizer'],
                            clean_txt=cfg.settings['clean_txt'], max_seq_len=cfg.settings['max_seq_len'])
+    if net_name == 'CNF':
+        # Initialize CNF model
+        cnf = CNF()
+        encoding_params = {
+            "num_flows": 0,
+            "hidden_layers": 2,
+            "hidden_size": 128
+        }
+        cnf.set_network(net_name=net_name,
+                        dataset=dataset,
+                        pretrained_model=cfg.settings['pretrained_model'],
+                        embedding_size=cfg.settings['embedding_size'],
+                        num_dimensions=cfg.settings['num_dimensions'],
+                        encoding_params=encoding_params,
+                        coupling_hidden_size=cfg.settings['coupling_hidden_size'],
+                        coupling_hidden_layers=cfg.settings['coupling_hidden_layers'],
+                        coupling_num_flows=cfg.settings['coupling_num_flows'],
+                        coupling_num_mixtures=cfg.settings['coupling_num_mixtures'],
+                        coupling_dropout=cfg.settings['coupling_dropout'],
+                        coupling_input_dropout=cfg.settings['coupling_input_dropout'],
+                        max_seq_len=cfg.settings['max_seq_len'],
+                        use_time_embed=cfg.settings['use_time_embed'])
 
-    if net_name == 'EmbeddingNF':
+        # If specified, load model parameters from already trained model
+        if load_model:
+            cnf.load_model(import_path=load_model, device=device)
+            logger.info('Loading model from %s.' % load_model)
+
+        # Train model on dataset
+        prior_dist_params = {
+        "distribution_type": cfg.settings['prior_dist_type'],
+        "mu": cfg.settings['prior_dist_mu'],
+        "sigma": cfg.settings['prior_dist_sigma'],
+        "start_x": cfg.settings['prior_dist_start_x'],
+        "stop_x": cfg.settings['prior_dist_stop_x']
+        }
+        cnf.train(dataset,
+                optimizer_name=cfg.settings['optimizer_name'],
+                lr=cfg.settings['lr'],
+                n_epochs=cfg.settings['n_epochs'],
+                lr_milestones=cfg.settings['lr_milestone'],
+                batch_size=cfg.settings['batch_size'],
+                use_length_prior=cfg.settings['use_length_prior'],
+                prior_dist_params=prior_dist_params,
+                weight_decay=cfg.settings['weight_decay'],
+                device=device,
+                n_jobs_dataloader=n_jobs_dataloader)
+
+        # Test model
+        cnf.test(dataset, device=device, n_jobs_dataloader=n_jobs_dataloader)
+    elif net_name == 'EmbeddingNF':
         # Initialize EmbeddingNF model and set word embedding
         enf = EmbeddingNF()
         enf.set_network(net_name=net_name,
                         dataset=dataset,
                         pretrained_model=cfg.settings['pretrained_model'],
                         embedding_size=cfg.settings['embedding_size'],
-                        coupling_num_flows=cfg.settings['coupling_num_flows'])
+                        coupling_hidden_size=cfg.settings['coupling_hidden_size'],
+                        coupling_hidden_layers=cfg.settings['coupling_hidden_layers'],
+                        coupling_num_flows=cfg.settings['coupling_num_flows'],
+                        coupling_num_mixtures=cfg.settings['coupling_num_mixtures'],
+                        coupling_dropout=cfg.settings['coupling_dropout'],
+                        coupling_input_dropout=cfg.settings['coupling_input_dropout'],
+                        max_seq_len=cfg.settings['max_seq_len'],
+                        use_time_embed=cfg.settings['use_time_embed'])
 
         # If specified, load model parameters from already trained model
         if load_model:
@@ -167,7 +233,7 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, de
                 n_epochs=cfg.settings['n_epochs'],
                 lr_milestones=cfg.settings['lr_milestone'],
                 batch_size=cfg.settings['batch_size'],
-                max_seq_length_prior=cfg.settings['max_seq_len'],
+                use_length_prior=cfg.settings['use_length_prior'],
                 prior_dist_params=prior_dist_params,
                 weight_decay=cfg.settings['weight_decay'],
                 device=device,
