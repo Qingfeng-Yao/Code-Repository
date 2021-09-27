@@ -1,5 +1,6 @@
 from base.base_net import BaseNet
 from .enf_flow_2D_models import MADE, BatchNormFlow, LUInvertibleMM, CouplingLayer, Reverse, FlowSequential
+from .bert_flow_models import Glow
 from utils.misc import create_transformer_mask, create_channel_mask
 
 import torch
@@ -18,28 +19,33 @@ class ENFNet_2D(BaseNet):
         # Set normalization flow module
         self.hidden_size = coupling_hidden_size
         self.num_flows = coupling_num_flows
+        self.flow_type = flow_type
 
-        modules = []
-        if flow_type == 'maf':
-            for _ in range(self.num_flows):
-                modules += [
-                MADE(self.num_dims, self.hidden_size, act='relu'),
-                BatchNormFlow(self.num_dims),
-                Reverse(self.num_dims)
-            ]
-        elif flow_type == 'glow':
-            mask = torch.arange(0, self.num_dims) % 2
-            mask = mask.to(device).float()
-            for _ in range(self.num_flows):
-                modules += [
+        if flow_type == 'bert-glow':
+            self.flow_model = Glow(self.num_dims)
+        else:
+            modules = []
+            if flow_type == 'maf':
+                for _ in range(self.num_flows):
+                    modules += [
+                    MADE(self.num_dims, self.hidden_size, act='relu'),
                     BatchNormFlow(self.num_dims),
-                    LUInvertibleMM(self.num_dims),
-                    CouplingLayer(
-                        self.num_dims, self.hidden_size, mask, s_act='tanh', t_act='relu')
+                    Reverse(self.num_dims)
                 ]
-                mask = 1 - mask
+            elif flow_type == 'glow':
+                mask = torch.arange(0, self.num_dims) % 2
+                mask = mask.to(device).float()
+                for _ in range(self.num_flows):
+                    modules += [
+                        BatchNormFlow(self.num_dims),
+                        LUInvertibleMM(self.num_dims),
+                        CouplingLayer(
+                            self.num_dims, self.hidden_size, mask, s_act='tanh', t_act='relu')
+                    ]
+                    mask = 1 - mask
 
-        self.flow_model = FlowSequential(*modules)
+            self.flow_model = FlowSequential(*modules)
+
 
         if self.use_length_prior:
             self.length_prior = dataset.length_prior
@@ -49,8 +55,10 @@ class ENFNet_2D(BaseNet):
     def forward(self, x, length):
         # x.shape = (sentence_length, batch_size)
         # length.shape = (batch_size, )
-
-        hidden = self.pretrained_model(x)
+        if self.flow_type == 'bert-glow':
+            hidden = self.pretrained_model(x, length)
+        else:
+            hidden = self.pretrained_model(x)
         # hidden.shape = (sentence_length, batch_size, hidden_size)
         # or hidden.shape = (batch_size, hidden_size)
 
@@ -62,6 +70,9 @@ class ENFNet_2D(BaseNet):
 
             loss_mean, loss_batch  = self.flow_model.log_probs(hidden, length, self.length_prior, channel_padding_mask)
         else:
-            loss_mean, loss_batch = self.flow_model.log_probs(hidden)
+            if self.flow_type == 'bert-glow':
+                loss_mean, loss_batch = self.flow_model(hidden)
+            else:
+                loss_mean, loss_batch = self.flow_model.log_probs(hidden)
 
         return loss_mean, loss_batch

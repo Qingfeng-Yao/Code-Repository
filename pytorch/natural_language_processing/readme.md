@@ -113,6 +113,9 @@
 - EmbeddingNF(2D)+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --embedding_reduction mean --flow_type maf --coupling_num_flows 5 --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
     - `--normal_class`可取`0-6`
     - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%, 6/%
+- EmbeddingNF(BERT-flow)+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --tokenizer bert --pretrained_model bert --embedding_reduction mean --flow_type bert-glow --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
+    - `--normal_class`可取`0-6`
+    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%, 6/%
 
 - CVDD+newsgroups20: `python3 main.py newsgroups20 cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 7337 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
     - `--normal_class`可取`0-5`

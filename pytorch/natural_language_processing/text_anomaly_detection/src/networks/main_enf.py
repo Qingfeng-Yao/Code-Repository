@@ -27,7 +27,7 @@ def build_network(net_name, dataset, embedding_size=None, pretrained_model=None,
                 embedding.weight.data[i] = word_vectors[token]
         # if language model
         if pretrained_model in ['bert']:
-            embedding = BERT()
+            embedding = BERT(update_embedding, embedding_reduction)
     else:
         if embedding_size is not None:
             embedding = MyEmbedding(vocab_size, embedding_size, update_embedding, embedding_reduction,

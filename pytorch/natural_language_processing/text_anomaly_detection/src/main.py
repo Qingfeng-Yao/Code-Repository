@@ -40,7 +40,7 @@ from datasets.main import load_dataset
               help='Choose embedding reduction method.')
 
 @click.option('--num_dimensions', type=int, default=3, help='Dimensionality of the embeddings.')
-@click.option('--flow_type', type=click.Choice(['maf', 'glow', 'realnvp', 'maf-split', 'maf-split-glow']), default='maf', help='Selecting the flow in the embeddingNF.')
+@click.option('--flow_type', type=click.Choice(['maf', 'glow', 'bert-glow', 'realnvp', 'maf-split', 'maf-split-glow']), default='maf', help='Selecting the flow in the embeddingNF.')
 
 @click.option('--coupling_hidden_size', type=int, default=1024, help='Hidden size of the coupling layers.')
 @click.option('--coupling_hidden_layers', type=int, default=2, help='Number of hidden layers in the coupling layers.')
