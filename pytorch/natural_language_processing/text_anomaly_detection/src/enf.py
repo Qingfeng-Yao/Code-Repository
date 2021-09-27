@@ -17,10 +17,10 @@ class EmbeddingNF(object):
         self.trainer = None
         self.optimizer_name = None
 
-    def set_network(self, net_name, dataset, pretrained_model, embedding_size=None, flow_type=None, coupling_hidden_size=None, coupling_num_flows=None, use_length_prior=True, device='cuda'):
+    def set_network(self, net_name, dataset, pretrained_model, embedding_size=None, embedding_reduction='none', flow_type=None, coupling_hidden_size=None, coupling_num_flows=None, use_length_prior=True, device='cuda'):
         """Builds the EmbeddingNF network composed of a pretrained_model and a normalization flow module."""
         self.net_name = net_name
-        self.net = build_network(net_name, dataset, embedding_size=embedding_size, pretrained_model=pretrained_model, flow_type=flow_type, 
+        self.net = build_network(net_name, dataset, embedding_size=embedding_size, pretrained_model=pretrained_model, embedding_reduction=embedding_reduction, flow_type=flow_type, 
                                  update_embedding=True, coupling_hidden_size=coupling_hidden_size, coupling_num_flows=coupling_num_flows, use_length_prior=use_length_prior, device=device)
 
     def train(self, dataset: BaseADDataset, optimizer_name: str = 'adam', lr: float = 0.001, n_epochs: int = 25,

@@ -1,4 +1,5 @@
 from .enf_Net import ENFNet
+from .enf_Net_2D import ENFNet_2D
 from .bert import BERT
 from base.embedding import MyEmbedding
 from utils.word_vectors import load_word_vectors
@@ -33,6 +34,8 @@ def build_network(net_name, dataset, embedding_size=None, pretrained_model=None,
                                     use_tfidf_weights, normalize_embedding)
         else:
             raise Exception('If pretrained_model is None, embedding_size must be specified')
-
-    net = ENFNet(embedding, dataset=dataset, flow_type=flow_type, coupling_hidden_size=coupling_hidden_size, coupling_num_flows=coupling_num_flows, use_length_prior=use_length_prior, device=device)
+    if embedding_reduction == 'none':
+        net = ENFNet(embedding, dataset=dataset, flow_type=flow_type, coupling_hidden_size=coupling_hidden_size, coupling_num_flows=coupling_num_flows, use_length_prior=use_length_prior, device=device)
+    else:
+        net = ENFNet_2D(embedding, dataset=dataset, flow_type=flow_type, coupling_hidden_size=coupling_hidden_size, coupling_num_flows=coupling_num_flows, use_length_prior=use_length_prior, device=device)
     return net

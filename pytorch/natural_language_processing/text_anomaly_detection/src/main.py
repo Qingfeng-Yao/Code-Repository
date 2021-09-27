@@ -35,6 +35,9 @@ from datasets.main import load_dataset
               type=click.Choice([None, 'GloVe_6B', 'GloVe_42B', 'GloVe_840B', 'GloVe_twitter.27B', 'FastText_en',
                                  'bert']),
               help='Load pre-trained word vectors or language models to initialize the word embeddings.')
+@click.option('--embedding_reduction', default='none',
+              type=click.Choice(['none', 'max', 'mean']),
+              help='Choose embedding reduction method.')
 
 @click.option('--num_dimensions', type=int, default=3, help='Dimensionality of the embeddings.')
 @click.option('--flow_type', type=click.Choice(['maf', 'glow', 'realnvp', 'maf-split', 'maf-split-glow']), default='maf', help='Selecting the flow in the embeddingNF.')
@@ -81,7 +84,7 @@ from datasets.main import load_dataset
 @click.option('--normal_class', type=int, default=0,
               help='Specify the normal class of the dataset (all other classes are considered anomalous).')
 def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, device, seed, tokenizer, clean_txt,
-         embedding_size, pretrained_model, num_dimensions, flow_type, coupling_hidden_size, coupling_hidden_layers, coupling_num_flows, coupling_num_mixtures, coupling_dropout, coupling_input_dropout, max_seq_len, use_length_prior, use_time_embed, prior_dist_type, prior_dist_mu, prior_dist_sigma, prior_dist_start_x, prior_dist_stop_x, ad_score, n_attention_heads, attention_size, lambda_p, alpha_scheduler,
+         embedding_size, pretrained_model, embedding_reduction, num_dimensions, flow_type, coupling_hidden_size, coupling_hidden_layers, coupling_num_flows, coupling_num_mixtures, coupling_dropout, coupling_input_dropout, max_seq_len, use_length_prior, use_time_embed, prior_dist_type, prior_dist_mu, prior_dist_sigma, prior_dist_start_x, prior_dist_stop_x, ad_score, n_attention_heads, attention_size, lambda_p, alpha_scheduler,
          optimizer_name, lr, n_epochs, lr_milestone, batch_size, weight_decay, n_jobs_dataloader, n_threads,
          normal_class):
     """
@@ -206,6 +209,7 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, de
                         dataset=dataset,
                         pretrained_model=cfg.settings['pretrained_model'],
                         embedding_size=cfg.settings['embedding_size'],
+                        embedding_reduction=cfg.settings['embedding_reduction'],
                         flow_type=cfg.settings['flow_type'],
                         coupling_hidden_size=cfg.settings['coupling_hidden_size'],
                         coupling_num_flows=cfg.settings['coupling_num_flows'],
