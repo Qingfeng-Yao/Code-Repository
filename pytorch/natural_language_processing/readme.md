@@ -6,6 +6,9 @@
 
 ### text anomaly detection
 - [lukasruff/CVDD-PyTorch](https://github.com/lukasruff/CVDD-PyTorch)
+- [ikostrikov/pytorch-flows](https://github.com/ikostrikov/pytorch-flows)
+- [UKPLab/pytorch-bertflow](https://github.com/UKPLab/pytorch-bertflow)
+- [bit-ml/date](https://github.com/bit-ml/date)
 
 ## 参考论文
 ### text modeling
@@ -14,6 +17,8 @@
 
 ### text anomaly detection
 - 2019 | ACL | Self-Attentive, Multi-Context One-Class Classification for Unsupervised Anomaly Detection on Text | Lukas Ruff et al.
+- 2020 | EMNLP | On the Sentence Embeddings from Pre-trained Language Models | ByteDance
+- 2021 | ACL | DATE: Detecting Anomalies in Text via Self-Supervision of Transformers | Andrei Manolache et al.
 
 ## 环境配置
 ### text modeling
@@ -24,6 +29,7 @@
 - `python3.7`; `text_anomaly_detection/requirements.txt`
     - 下载`spaCy en`库: `python3 -m spacy download en`;可能会因为`timed out`出现无法下载的问题，可多次尝试，实在不行只能利用已经下载好的en目录并放在`python3.7/site-packages/spacy/data`目录下
     - 可设置conda环境(textanopy)
+    - conda环境(dateano): `python3.6`; `text_anomaly_detection/requirements_date.txt`
 
 ## 任务
 ### text(language) modeling
@@ -101,35 +107,28 @@
 - 运行以下命令前需要先创建日志目录`log`
 - CNF无法使用预训练词嵌入，需要使用更大的显存，目前暂无结果
 - EmbeddingNF中训练或测试会出现损失为inf或nan的情况
-- CVDD+reuters: `python3 main.py reuters cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 550 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
-    - `--normal_class`可取`0-6`
-    - auc: 0/93.88%, 1/90.14%, 2/89.63%, 3/98.18%, 4/77.73%, 5/92.86%, 6/97.64%
-- CNF+reuters: `python3 main.py reuters CNF ../log ../data --seed 1 --clean_txt  --num_dimensions 3 --coupling_hidden_layers 1 --coupling_num_flows 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --use_length_prior --use_time_embed --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
-    - `--normal_class`可取`0-6`
-    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%, 6/
-- EmbeddingNF+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --flow_type maf --coupling_num_flows 5 --use_length_prior --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
-    - `--normal_class`可取`0-6`
-    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%, 6/%
-- EmbeddingNF(2D)+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --embedding_reduction mean --flow_type maf --coupling_num_flows 5 --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
-    - `--normal_class`可取`0-6`
-    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%, 6/%
-- EmbeddingNF(BERT-flow)+reuters: `python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --tokenizer bert --pretrained_model bert --embedding_reduction mean --flow_type bert-glow --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
-    - `--normal_class`可取`0-6`
-    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%, 6/%
-
-- CVDD+newsgroups20: `python3 main.py newsgroups20 cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 7337 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
-    - `--normal_class`可取`0-5`
-    - auc: 0/74.30%, 1/60.02%, 2/58.14%, 3/75.64%, 4/71.06%, 5/77.88%
-- CNF+newsgroups20: `python3 main.py newsgroups20 CNF ../log ../data --seed 1 --clean_txt  --num_dimensions 3 --coupling_hidden_layers 1 --coupling_num_flows 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --use_length_prior --use_time_embed --max_seq_len 7337 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
-    - `--normal_class`可取`0-5`
-    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%
-- EmbeddingNF+newsgroups20: `python3 main.py newsgroups20 EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --flow_type maf --coupling_num_flows 5 --use_length_prior --max_seq_len 7337 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
-    - `--normal_class`可取`0-5`
-    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%
-- EmbeddingNF(2D)+newsgroups20: `python3 main.py newsgroups20 EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --embedding_reduction mean --flow_type maf --coupling_num_flows 5 --max_seq_len 7337 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0`
-    - `--normal_class`可取`0-5`
-    - auc: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%
-
-- CVDD+imdb: `python3 main.py imdb cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 1400 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0`
-    - `--normal_class`可取`0-1`
-    - auc: 0/46.39%, 1/56.26%
+- 使用Date模型时需要确保data目录下每个数据集得到对应的train和test文件，同时在test中还需要得到对应的outliers文件(运行命令``)
+- `reuters`(--normal_class可取0-6)
+    - `CVDD`: python3 main.py reuters cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 550 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0
+        - `auc`: 0/93.88%, 1/90.14%, 2/89.63%, 3/98.18%, 4/77.73%, 5/92.86%, 6/97.64%
+    - `Date`: python3 main.py reuters date_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 550 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0
+        - `auc`: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%, 6/%
+- `newsgroups20`(--normal_class可取0-5)
+    - `CVDD`: python3 main.py newsgroups20 cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 7337 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0
+        - `auc`: 0/74.30%, 1/60.02%, 2/58.14%, 3/75.64%, 4/71.06%, 5/77.88%
+    - `Date`: python3 main.py newsgroups20 date_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 550 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0
+        - `auc`: 0/%, 1/%, 2/%, 3/%, 4/%, 5/%
+- `imdb`(--normal_class可取0-1)
+    - `CVDD`: python3 main.py imdb cvdd_Net ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --ad_score context_dist_mean --n_attention_heads 3 --attention_size 150 --max_seq_len 1400 --lambda_p 1.0 --alpha_scheduler logarithmic --n_epochs 100 --lr 0.01 --lr_milestone 40  --normal_class 0
+        - `auc`: 0/46.39%, 1/56.26%
+- 以下为其他测试命令
+    - `cvdd_flow+reuters`: 除了更改网络名字为`cvdd_flow`，其他同`CVDD+reuters`
+    - `EmbeddingNF(2D+glow)+reuters`: python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --embedding_reduction mean --flow_type bert-glow --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0
+    - `CNF+reuters`: python3 main.py reuters CNF ../log ../data --seed 1 --clean_txt  --num_dimensions 3 --coupling_hidden_layers 1 --coupling_num_flows 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --use_length_prior --use_time_embed --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0
+    - `EmbeddingNF+reuters`: python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --flow_type maf --coupling_num_flows 5 --use_length_prior --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0
+    - `EmbeddingNF(2D)+reuters`: python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model GloVe_6B --embedding_reduction mean --flow_type maf --coupling_num_flows 5 --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0
+    - `EmbeddingNF(BERT-flow)+reuters`: python3 main.py reuters EmbeddingNF ../log ../data --seed 1 --clean_txt --tokenizer bert --pretrained_model bert --embedding_reduction mean --flow_type bert-glow --max_seq_len 550 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0
+    - `EmbeddingNF(2D+glow)+newsgroups20`: python3 main.py newsgroups20 EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --embedding_reduction mean --flow_type bert-glow --max_seq_len 7337 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0
+    - `CNF+newsgroups20`: python3 main.py newsgroups20 CNF ../log ../data --seed 1 --clean_txt  --num_dimensions 3 --coupling_hidden_layers 1 --coupling_num_flows 1 --coupling_dropout 0.3 --coupling_input_dropout 0.1 --use_length_prior --use_time_embed --max_seq_len 7337 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0
+    - `EmbeddingNF+newsgroups20`: python3 main.py newsgroups20 EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --flow_type maf --coupling_num_flows 5 --use_length_prior --max_seq_len 7337 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0
+    - `EmbeddingNF(2D)+newsgroups20`: python3 main.py newsgroups20 EmbeddingNF ../log ../data --seed 1 --clean_txt --embedding_size 300 --pretrained_model FastText_en --embedding_reduction mean --flow_type maf --coupling_num_flows 5 --max_seq_len 7337 --n_epochs 100 --lr 0.01 --lr_milestone 40 --normal_class 0

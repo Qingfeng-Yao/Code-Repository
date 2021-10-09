@@ -19,7 +19,7 @@ class MyEmbedding(nn.Embedding):
         self.use_tfidf_weights = use_tfidf_weights
         self.normalize = normalize
 
-    def forward(self, x, weights=None):
+    def forward(self, x, lengths=None, weights=None):
         # x.shape = (sentence_length, batch_size)
         # weights.shape = (sentence_length, batch_size)
 
@@ -37,7 +37,8 @@ class MyEmbedding(nn.Embedding):
                     # compute tf-idf weighted mean if specified
                     embedded = torch.sum(embedded * weights.unsqueeze(2), dim=0)
                 else:
-                    embedded = torch.mean(embedded, dim=0)
+                    # embedded = torch.mean(embedded, dim=0)
+                    embedded = embedded.sum(dim=0).div(lengths.unsqueeze(-1))
 
             if self.reduction == 'max':
                 embedded, _ = torch.max(embedded, dim=0)

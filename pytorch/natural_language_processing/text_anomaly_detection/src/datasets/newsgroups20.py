@@ -13,6 +13,7 @@ from .preprocessing import compute_tfidf_weights
 import torch
 import nltk
 import numpy as np 
+import os
 
 
 class Newsgroups20_Dataset(TorchnlpDataset):
@@ -33,6 +34,8 @@ class Newsgroups20_Dataset(TorchnlpDataset):
             ['talk.politics.misc', 'talk.politics.guns', 'talk.politics.mideast'],
             ['talk.religion.misc', 'alt.atheism', 'soc.religion.christian']
         ]
+        short_group_names = ['comp', 'rec', 'sci', 'misc', 'pol', 'rel']
+        self.subset = short_group_names[normal_class]
 
         self.normal_classes = groups[normal_class]
         self.outlier_classes = []
@@ -41,7 +44,7 @@ class Newsgroups20_Dataset(TorchnlpDataset):
             self.outlier_classes += groups[i]
 
         # Load the 20 Newsgroups dataset
-        self.train_set, self.test_set = newsgroups20_dataset(directory=root, train=True, test=True, clean_txt=clean_txt)
+        self.train_set, self.test_set = newsgroups20_dataset(directory=root, train=True, test=True, clean_txt=clean_txt, groups=groups, short_group_names=short_group_names)
 
         # Pre-process
         self.train_set.columns.add('index')
@@ -114,7 +117,7 @@ class Newsgroups20_Dataset(TorchnlpDataset):
         self.length_prior = np.log(sent_lengths_freq) - np.log(sent_lengths_freq.sum())
 
 
-def newsgroups20_dataset(directory='../data', train=False, test=False, clean_txt=False):
+def newsgroups20_dataset(directory='../data', train=False, test=False, clean_txt=False, groups=None, short_group_names=None):
     """
     Load the 20 Newsgroups dataset.
 
@@ -131,6 +134,11 @@ def newsgroups20_dataset(directory='../data', train=False, test=False, clean_txt
 
     if directory not in nltk.data.path:
         nltk.data.path.append(directory)
+    
+    file_export = True
+    export_path = os.path.join(directory, 'newsgroups20')
+    if os.path.exists(export_path):
+        file_export = False
 
     ret = []
     splits = [split_set for (requested, split_set) in [(train, 'train'), (test, 'test')] if requested]
@@ -139,21 +147,40 @@ def newsgroups20_dataset(directory='../data', train=False, test=False, clean_txt
 
         dataset = fetch_20newsgroups(data_home=directory, subset=split_set, remove=('headers', 'footers', 'quotes'))
         examples = []
-
+        corpus = {}
+        if file_export:
+            for g in short_group_names:
+                corpus[g] = ''
+        
         for id in range(len(dataset.data)):
+            label = dataset.target_names[int(dataset.target[id])]
             if clean_txt:
                 text = clean_text(dataset.data[id])
             else:
                 text = ' '.join(word_tokenize(dataset.data[id]))
-            label = dataset.target_names[int(dataset.target[id])]
-
+            
             if text:
                 examples.append({
                     'text': text,
                     'label': label
                 })
+                if file_export:
+                    for i, g in enumerate(groups):
+                        if label in g:
+                            corpus[short_group_names[i]] += f'\n\n{text}'
+                
 
         ret.append(Dataset(examples))
+
+        if file_export:
+            full_path = os.path.join(export_path, split_set)
+            for g in short_group_names:
+
+                if not os.path.exists(full_path):
+                    os.makedirs(full_path)
+
+                with open(os.path.join(full_path,f'{g}.txt'), 'w') as f:
+                    f.write(corpus[g])
 
     if len(ret) == 1:
         return ret[0]

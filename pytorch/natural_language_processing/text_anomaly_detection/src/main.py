@@ -4,11 +4,14 @@ import logging
 import random
 import numpy as np
 import os
+import pickle as pkl
+import datetime
 
 from utils.config import Config
 from utils.distributions import PriorDistribution
 
 from cvdd import CVDD
+from cvdd_flow import CVDD_Flow
 from enf import EmbeddingNF
 from cnf import CNF
 from datasets.main import load_dataset
@@ -19,7 +22,7 @@ from datasets.main import load_dataset
 ################################################################################
 @click.command()
 @click.argument('dataset_name', type=click.Choice(['reuters', 'newsgroups20', 'imdb']))
-@click.argument('net_name', type=click.Choice(['cvdd_Net', 'CNF', 'EmbeddingNF']))
+@click.argument('net_name', type=click.Choice(['cvdd_Net', 'CNF', 'EmbeddingNF', 'date_Net', 'cvdd_flow']))
 @click.argument('xp_path', type=click.Path(exists=True))
 @click.argument('data_path', type=click.Path(exists=True))
 @click.option('--load_config', type=click.Path(exists=True), default=None,
@@ -234,6 +237,85 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, de
 
         # Test model
         enf.test(dataset, device=device, n_jobs_dataloader=n_jobs_dataloader)
+    elif net_name == 'date_Net':
+        os.environ["TOKENIZERS_PARALLELISM"] = 'false'
+        masks_ = pkl.load(open(data_path+'/pseudo_labels128_p50.pkl', 'rb'))
+        subset = [dataset.subset]
+        tensorboard_dir = 'run'
+        exp_prefix = 'tests'
+        now = datetime.now()
+        date_time = now.strftime("%m%d%Y_%H%M%S")
+        run_name = f'{subset[0]}_{date_time}'
+
+        train_args = {
+        "fp16": False,
+        "use_multiprocessing": False,
+        "reprocess_input_data": False,
+        "overwrite_output_dir": True,
+        "num_train_epochs": 20,
+        "save_eval_checkpoints": False,
+        "save_model_every_epoch": False,
+        "learning_rate": 1e-5,
+        "warmup_steps": 1000,
+        "train_batch_size": 16,  #was 32
+        "eval_batch_size": 16,  #was 32
+        "gradient_accumulation_steps": 1,
+        "block_size": 128 + 2,
+        "max_seq_length": 128 + 2,
+        "dataset_type": "simple",
+        "logging_steps": 500,
+        "evaluate_during_training": True,
+        "evaluate_during_training_steps": 500,  #was 500
+        "evaluate_during_training_steps_anomaly": 500,  #was 500
+        "anomaly_batch_size": 16,
+        "evaluate_during_training_verbose": True,
+        "use_cached_eval_features": True,
+        "sliding_window": True,
+        "vocab_size": 52000,
+        "eval_anomalies": True,
+        "random_generator": 1,
+        "use_rtd_loss": True,
+        "rtd_loss_weight": 50,
+        "rmd_loss_weight": 100,
+        "mlm_loss_weight": 1,
+        "dump_histogram": 0,
+        "eval_anomaly_after": 0,
+        "train_just_generator": 0,
+        "replace_tokens": 0,
+        "extract_scores": 1,
+        "subset_name": subset[0],
+        "extract_repr": 0,
+        # "vanilla_electra": {
+        #     "no_masks": masks,
+        # },
+        # "vanilla_electra": False,
+        "train_document": True,
+        "tokenizer_name": "bert-base-uncased",
+        "tensorboard_dir": f'{tensorboard_dir}/{exp_prefix}/{run_name}',
+        "extract_reps": 0,
+        "weight_decay": weight_decay,
+        "optimizer": "AdamW",
+        "scores_export_path": f"./token_scores/{run_name}/",
+        "generator_config": {
+            "embedding_size": 128,
+            "hidden_size": 16,
+            "num_hidden_layers": 1,
+        },
+        "discriminator_config": {
+            "hidden_dropout_prob": 0.5,
+            "attention_probs_dropout_prob": 0.5,
+            "embedding_size": 128,
+            "hidden_size": 256,
+            "num_hidden_layers": 4,
+        },
+        "mlm_lr_ratio": 1,
+        }
+
+        train_file = f"{data_path}/{dataset_name}/train/{subset[0]}.txt"
+        test_file = f"{data_path}/{dataset_name}/test/{subset[0]}.txt"
+
+        outlier_file = f"{data_path}/{dataset_name}/test/{subset[0]}-outliers.txt"
+
     elif net_name == 'cvdd_Net':
         # Print CVDD configuration
         logger.info('Anomaly Score: %s' % cfg.settings['ad_score'])
@@ -271,6 +353,30 @@ def main(dataset_name, net_name, xp_path, data_path, load_config, load_model, de
 
         # Test model
         cvdd.test(dataset, device=device, n_jobs_dataloader=n_jobs_dataloader)
+    elif net_name == 'cvdd_flow':
+        # Initialize CVDD_Flow model and set word embedding
+        cvdd_flow = CVDD_Flow(cfg.settings['ad_score'])
+        cvdd_flow.set_network(net_name=net_name,
+                        dataset=dataset,
+                        pretrained_model=cfg.settings['pretrained_model'],
+                        embedding_size=cfg.settings['embedding_size'],
+                        attention_size=cfg.settings['attention_size'],
+                        n_attention_heads=cfg.settings['n_attention_heads'])
+        # Train model on dataset
+        cvdd_flow.train(dataset,
+                optimizer_name=cfg.settings['optimizer_name'],
+                lr=cfg.settings['lr'],
+                n_epochs=cfg.settings['n_epochs'],
+                lr_milestones=cfg.settings['lr_milestone'],
+                batch_size=cfg.settings['batch_size'],
+                lambda_p=cfg.settings['lambda_p'],
+                alpha_scheduler=cfg.settings['alpha_scheduler'],
+                weight_decay=cfg.settings['weight_decay'],
+                device=device,
+                n_jobs_dataloader=n_jobs_dataloader)
+
+        # Test model
+        cvdd_flow.test(dataset, device=device, n_jobs_dataloader=n_jobs_dataloader)
 
 
 if __name__ == '__main__':

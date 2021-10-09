@@ -21,7 +21,7 @@ class EmbeddingNF(object):
         """Builds the EmbeddingNF network composed of a pretrained_model and a normalization flow module."""
         self.net_name = net_name
         self.net = build_network(net_name, dataset, embedding_size=embedding_size, pretrained_model=pretrained_model, embedding_reduction=embedding_reduction, flow_type=flow_type, 
-                                 update_embedding=True, coupling_hidden_size=coupling_hidden_size, coupling_num_flows=coupling_num_flows, use_length_prior=use_length_prior, device=device)
+                                 update_embedding=False, coupling_hidden_size=coupling_hidden_size, coupling_num_flows=coupling_num_flows, use_length_prior=use_length_prior, device=device)
 
     def train(self, dataset: BaseADDataset, optimizer_name: str = 'adam', lr: float = 0.001, n_epochs: int = 25,
               lr_milestones: tuple = (), batch_size: int = 64, weight_decay: float = 0.5e-6, device: str = 'cuda',

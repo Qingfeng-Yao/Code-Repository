@@ -55,10 +55,7 @@ class ENFNet_2D(BaseNet):
     def forward(self, x, length):
         # x.shape = (sentence_length, batch_size)
         # length.shape = (batch_size, )
-        if self.flow_type == 'bert-glow':
-            hidden = self.pretrained_model(x, length)
-        else:
-            hidden = self.pretrained_model(x)
+        hidden = self.pretrained_model(x, length)
         # hidden.shape = (sentence_length, batch_size, hidden_size)
         # or hidden.shape = (batch_size, hidden_size)
 
