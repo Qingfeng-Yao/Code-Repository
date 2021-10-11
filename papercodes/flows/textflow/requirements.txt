@@ -1,3 +1,0 @@
-torch==1.2.0
-torchtext==0.2.3
-numpy==1.19.5
