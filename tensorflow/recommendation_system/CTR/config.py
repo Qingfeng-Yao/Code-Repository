@@ -16,17 +16,20 @@ class CONFIG:
         # 'amazon': 'amazon_{}.tfrecords'
         # 'amazon': 'amazon_{}_small.tfrecords'
         'amazon': 'amazon_{}_small_group.tfrecords',
-        'movielens': 'movielens_{}.tfrecords'
+        'movielens': 'movielens_{}.tfrecords',
+        'heybox': 'heybox_{}_small.tfrecords'
     }
 
     PARSER_MAP = {
         'amazon': 'tfrecord',
-        'movielens': 'tfrecord'
+        'movielens': 'tfrecord',
+        'heybox': 'tfrecord'
     }
 
     TYPE_MAP = {
         'amazon': 'varlen-sparse',
-        'movielens': 'varlen-sparse'
+        'movielens': 'varlen-sparse',
+        'heybox': 'varlen-sparse'
     }
 
     PADDED_SHAPE = {
@@ -38,6 +41,14 @@ class CONFIG:
                 'item': [],
                 'item_cate':[],
                 'reviewer_group': []
+        },[1]), 
+        'heybox': ({
+                'reviewer_id': [],
+                'hist_item_list': [None],
+                'hist_cate_list':[None],
+                'hist_length': [],
+                'item': [],
+                'item_cate':[]
         },[1]), 
         'movielens': ({
                 'user_id': [],

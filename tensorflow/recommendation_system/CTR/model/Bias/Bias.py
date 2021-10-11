@@ -54,7 +54,8 @@ def model_fn_varlen(features, labels, mode, params):
 build_estimator = build_estimator_helper(
     model_fn = {
         'amazon': model_fn_varlen,
-        'movielens': model_fn_varlen
+        'movielens': model_fn_varlen,
+        'heybox': model_fn_varlen
     },
     params = {
         'amazon':{ 'dropout_rate' : 0.2,
@@ -72,6 +73,23 @@ build_estimator = build_estimator_helper(
                    'emb_dim': AMAZON_EMB_DIM,
                    'model_name': 'bias',
                    'data_name': 'amazon',
+                   'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
+            },
+        'heybox':{ 'dropout_rate' : 0.2,
+                   'batch_norm' : True,
+                   'learning_rate' : 0.01,
+                   'hidden_units' : [80,40],
+                   'attention_hidden_unit': 80,
+                   'atten_mode': 'ln', 
+                   'num_heads': 1,
+                   'item_count': HEYBOX_ITEM_COUNT,
+                   'cate_count': HEYBOX_CATE_COUNT,
+                   'seq_names': ['item', 'cate'],
+                   'num_of_expert': 50,
+                   'sparse_emb_dim': 128,
+                   'emb_dim': HEYBOX_EMB_DIM,
+                   'model_name': 'bias',
+                   'data_name': 'heybox',
                    'input_features': ['dense_emb', 'item_emb', 'cate_emb', 'item_att_emb', 'cate_att_emb']
             },
         'movielens':{ 'dropout_rate' : 0.2,

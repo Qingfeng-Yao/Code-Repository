@@ -51,7 +51,8 @@ def model_fn_varlen(features, labels, mode, params):
 build_estimator = build_estimator_helper(
     model_fn = {
         'amazon': model_fn_varlen,
-        'movielens': model_fn_varlen
+        'movielens': model_fn_varlen,
+        'heybox': model_fn_varlen
     },
     params = {
         'amazon':{ 'dropout_rate' : 0.2,

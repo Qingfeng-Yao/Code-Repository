@@ -26,6 +26,7 @@
 #### 数据集
 - amazon(eletronics)
 - movielens
+- heybox
 - 具体的数据集处理过程及相关统计信息可参见`CTR/data`
 
 #### 模型

@@ -14,6 +14,16 @@ def parse_example_helper_tfreocrd_amazon(line):
 
     return features, target
 
+def parse_example_helper_tfreocrd_heybox(line):
+    features = tf.io.parse_single_example(line, features = HEYBOX_PROTO)
+
+    for i in HEYBOX_VARLEN:
+        features[i] = tf.sparse.to_dense(features[i])
+
+    target = tf.reshape(tf.cast( features.pop( HEYBOX_TARGET ), tf.float32),[-1])
+
+    return features, target
+
 def parse_example_helper_tfreocrd_movielens(line):
     features = tf.io.parse_single_example(line, features = ML_PROTO)
 
@@ -32,7 +42,9 @@ def input_fn(step, is_predict, config):
         elif config.input_parser == 'tfrecord' and config.data_name == 'movielens':
             dataset = tf.data.TFRecordDataset(config.data_dir.format(step)) \
                 .map(parse_example_helper_tfreocrd_movielens, num_parallel_calls=8)
-
+        elif config.input_parser == 'tfrecord' and config.data_name == 'heybox':
+            dataset = tf.data.TFRecordDataset(config.data_dir.format(step)) \
+                .map(parse_example_helper_tfreocrd_heybox, num_parallel_calls=8)
         else:
             raise Exception('Only [amazon.tfrecord and movielens.tfrecord] are supported now')
 
