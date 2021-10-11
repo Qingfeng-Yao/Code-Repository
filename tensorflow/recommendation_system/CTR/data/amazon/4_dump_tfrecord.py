@@ -24,7 +24,7 @@ class TFDump(object):
         return tf.train.Feature( int64_list=tf.train.Int64List( value= value ) )
 
     def dump(self, data, type):
-        with tf.python_io.TFRecordWriter('amazon_{}.tfrecords'.format(type)) as writer:
+        with tf.io.TFRecordWriter('amazon_{}.tfrecords'.format(type)) as writer:
             n = 0
             for record in data:
                 n += 1

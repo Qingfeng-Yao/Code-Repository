@@ -13,9 +13,9 @@ class CONFIG:
     CHECKPOINT_DIR = './{}_checkpoint/{}'
 
     DATA_MAP = {
-        # 'amazon': 'amazon_{}.tfrecords'
+        'amazon': 'amazon_{}.tfrecords',
         # 'amazon': 'amazon_{}_small.tfrecords'
-        'amazon': 'amazon_{}_small_group.tfrecords',
+        # 'amazon': 'amazon_{}_small_group.tfrecords',
         'movielens': 'movielens_{}.tfrecords',
         'heybox': 'heybox_{}_small.tfrecords'
     }
@@ -40,7 +40,7 @@ class CONFIG:
                 'hist_length': [],
                 'item': [],
                 'item_cate':[],
-                'reviewer_group': []
+                # 'reviewer_group': []
         },[1]), 
         'heybox': ({
                 'reviewer_id': [],
