@@ -34,13 +34,13 @@ class CONFIG:
 
     PADDED_SHAPE = {
         'amazon': ({
-                'reviewer_id': [],
+                'user_id': [],
                 'hist_item_list': [None],
                 'hist_cate_list':[None],
                 'hist_length': [],
                 'item': [],
                 'item_cate':[],
-                # 'reviewer_group': []
+                # 'user_group': []
         },[1]), 
         'heybox': ({
                 'reviewer_id': [],
@@ -57,7 +57,7 @@ class CONFIG:
                 'hist_length': [],
                 'item': [],
                 'item_cate':[],
-                'user_group': []
+                # 'user_group': []
         },[1])
     }
 
@@ -91,7 +91,7 @@ class CONFIG:
         return CONFIG.TYPE_MAP[self.data_name]
 
 MODEL_PARAMS = {
-    'batch_size': 512,
+    'batch_size': 32,
     'num_epochs': 5000,
     'buffer_size': 512
 }

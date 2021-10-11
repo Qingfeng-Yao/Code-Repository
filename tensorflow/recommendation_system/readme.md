@@ -23,7 +23,12 @@
     - UserPerExpert: 0.7857/0.9437
 - 相关执行命令
     - `DIN`:
-        -  `amazon`: 
+        -  `amazon`: python3 main.py --model DIN --dataset amazon
+            - `auc:`
+        - `movielens`: python3 main.py --model DIN --dataset movielens
+            - `auc:`
+        - `heybox`: python3 main.py --model DIN --dataset heybox
+            - `auc:`
 - 参考论文
     - 2017 | ICLR | Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer | Google
     - 2018 | KDD | Deep Interest Network for Click-Through Rate Prediction | Alibaba

@@ -39,7 +39,7 @@ class TFDump(object):
                             'item': TFDump.int_feature( record[2] ),
                             'item_cate': TFDump.int_feature( self.cate_list[record[2]] ),
                             'target': TFDump.int_feature( record[3] ),
-                            'user_group': TFDump.int_feature( record[4] ) # 添加用户群组信息，对应修改数据集配置，包括const和config文件
+                            # 'user_group': TFDump.int_feature( record[4] ) # 添加用户群组信息，对应修改数据集配置，包括const和config文件
                         }
                     )
                 )

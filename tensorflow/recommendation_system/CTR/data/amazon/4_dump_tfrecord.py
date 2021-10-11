@@ -31,7 +31,7 @@ class TFDump(object):
                 example = tf.train.Example(
                     features = tf.train.Features(
                         feature = {
-                            'reviewer_id': TFDump.int_feature( record[0] ),
+                            'user_id': TFDump.int_feature( record[0] ),
                             'hist_item_list': TFDump.int_feature( record[1] ),
                             'hist_cate_list': TFDump.int_feature( [self.cate_list[i] for i in record[1]] ),
                             'hist_length': TFDump.int_feature( len( record[1] ) ),

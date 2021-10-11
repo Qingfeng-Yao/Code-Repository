@@ -6,7 +6,7 @@ random.seed(1234)
 
 with open('ratings.pkl', 'rb') as f:
   ratings_df = pickle.load(f)
-  ratings_df = ratings_df[['userId', 'movieId', 'timestamp']]
+  ratings_df = ratings_df[['userId', 'movieId', 'timestamp', 'rating']]
 
 with open('meta.pkl', 'rb') as f:
   meta_df = pickle.load(f)

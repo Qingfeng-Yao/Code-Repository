@@ -5,7 +5,7 @@
 - movies.csv中每一行形如1,Toy Story (1995),Adventure|Animation|Children|Comedy|Fantasy，`共有27278行`，其中第一栏为`movieId`，第二栏为`title`，第三栏为`genres`
 
 ### 数据处理
-- 1_convert_pd.py: 使用pd分别读取ratings.csv和movies.csv的内容，对于第一个文件将rating栏下的数值依据>=4重写为1或0；对于第二个文件只选取第一个文件中出现的movieId，得到共22884行，最后分别写入`ratings.pkl`和`meta.pkl`
-- `2_remap_id.py`: 对`ratings.csv`中每一条记录只保留`['userId', 'movieId', 'timestamp']`，并将`userId`, `movieId`对应值转为索引；对`meta.pkl`中每一条记录只保留`['movieId', 'genres']`，其中genres只取最后一个类，并将`movieId`, `genres`对应值转为索引；统计`用户数138362，电影数22884，类别数20，样本数12195566`；最后得到`remap.pkl`，由4部分组成，分别是ratings_df(按用户ID和评分时间排好序的评分记录)、cate_list(按索引排好序的电影对应类组成的列表)和两个元组(一个由user_count, item_count, cate_count, example_count组成，另一个由item_key, cate_key, user_key三个列表组成，三个列表分别对应唯一的电影原始ID、唯一的类别原始ID和唯一的用户原始ID)
-- `3_build_dataset.py`: 按用户进行分组，对每个用户生成和正样本(假设有N个)一样数目的负样本，对于训练集，使用前N-1个正样本，对于测试集使用所有N个正样本，因为要求序列长度至少为3，所以筛选出的用户数为138078；训练集中每一条数据为一个元组，依次是用户ID、历史正样本列表(长度为N-2)，目标正(负)样本、1(或0)和用户的分组信息；测试集中每一条数据也为一个元组，依次是用户ID、历史正样本列表(长度为N-1)，目标正(负)样本、1(或0)和用户的分组信息；shuffle数据集；其中训练集和测试集样本数相同，共有276156条数据，生成`dataset.pkl`
-- `4_dump_tfrecord.py`: 将训练集和测试集数据转换成tfrecords格式，生成`movielens_train.tfrecords`和`movielens_valid.tfrecords`；tfrecords格式要求指明每一条数据的feature，对于该数据集，包括`'user_id', 'hist_item_list', 'hist_cate_list', 'hist_length', 'item', 'item_cate', 'target', 'user_group'`
+- 1_convert_pd.py: 使用pd分别读取ratings.csv和movies.csv的内容，对于第一个文件将rating栏下的数值依据>=4重写为1或0；最后分别写入`ratings.pkl`和`meta.pkl`
+- 2_remap_id.py: 对ratings.csv中每一条记录只保留`['userId', 'movieId', 'timestamp', 'rating']`，并将`userId`, `movieId`对应值转为索引；对`meta.pkl`中每一条记录只保留`['movieId', 'genres']`，其中genres只取最后一个类，并将`movieId`, `genres`对应值转为索引；统计`用户数138493，电影数27278，类别数20，样本数20000263`；最后得到`remap.pkl`，由4部分组成，分别是ratings_df(按用户ID和评分时间排好序的评分记录)、cate_list(按索引排好序的电影对应类组成的列表)和两个元组(一个由user_count, item_count, cate_count, example_count组成，另一个由item_key, cate_key, user_key三个列表组成，三个列表分别对应唯一的电影原始ID、唯一的类别原始ID和唯一的用户原始ID)
+- 3_build_dataset.py: 按用户划分训练集和测试集，随机选择`100000个用户`为训练集(`共有100000个样本`)，剩下的`38493个用户`为测试集(`共有38493个样本`)，生成`dataset.pkl`
+- 4_dump_tfrecord.py: 将训练集和测试集数据转换成tfrecords格式，生成`movielens_train.tfrecords`和`movielens_valid.tfrecords`；tfrecords格式要求指明每一条数据的feature，对于该数据集，包括`'user_id', 'hist_item_list', 'hist_cate_list', 'hist_length', 'item', 'item_cate', 'target'`

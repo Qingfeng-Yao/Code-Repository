@@ -10,7 +10,7 @@ ML_PROTO = {
     'item': tf.io.FixedLenFeature( [], tf.int64 ),
     'item_cate': tf.io.FixedLenFeature([], tf.int64),
     'target': tf.io.FixedLenFeature( [], tf.int64 ),
-    'user_group': tf.io.FixedLenFeature( [], tf.int64 )
+    # 'user_group': tf.io.FixedLenFeature( [], tf.int64 )
 }
 
 ML_TARGET = 'target'

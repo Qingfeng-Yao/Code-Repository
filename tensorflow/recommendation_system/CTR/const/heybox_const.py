@@ -3,7 +3,7 @@ import pickle
 
 
 HEYBOX_PROTO = {
-    'reviewer_id': tf.io.FixedLenFeature( [], tf.int64 ), # userid
+    'user_id': tf.io.FixedLenFeature( [], tf.int64 ), # userid
     'hist_item_list': tf.io.VarLenFeature( tf.int64 ), # post
     'hist_cate_list': tf.io.VarLenFeature(tf.int64), # topic
     'hist_length': tf.io.FixedLenFeature([], tf.int64),
