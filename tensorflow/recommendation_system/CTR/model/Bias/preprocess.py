@@ -3,10 +3,7 @@ import tensorflow as tf
 
 
 def build_features(params):
-    if params['data_name'] == 'movielens':
-        user_id_name = 'user_id'
-    else:
-        user_id_name = 'reviewer_id'
+    user_id_name = 'user_id'
 
     if params['data_name'] == 'amazon':
         f_user = tf.feature_column.categorical_column_with_identity(
