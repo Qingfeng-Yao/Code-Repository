@@ -17,7 +17,7 @@ class CONFIG:
         # 'amazon': 'amazon_{}_small.tfrecords'
         # 'amazon': 'amazon_{}_small_group.tfrecords',
         'movielens': 'movielens_{}.tfrecords',
-        'heybox': 'heybox_{}_small.tfrecords'
+        'heybox': 'heybox_{}.tfrecords'
     }
 
     PARSER_MAP = {
@@ -43,7 +43,7 @@ class CONFIG:
                 # 'user_group': []
         },[1]), 
         'heybox': ({
-                'reviewer_id': [],
+                'user_id': [],
                 'hist_item_list': [None],
                 'hist_cate_list':[None],
                 'hist_length': [],

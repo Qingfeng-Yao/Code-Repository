@@ -20,15 +20,22 @@ for reviewerID, hist in reviews_df.groupby('reviewerID'):
     return neg
   neg_list = [gen_neg() for i in range(len(pos_list))] # generate same length negative item sample: balance 1:1
 
-  # 1 reviewer has N positive item: generate N negative item
-  for i in range(1, len(pos_list)):
-    hist = pos_list[:i]
-    if i != (len(pos_list)-1):
-      train_set.append((reviewerID, hist, pos_list[i], 1)) # use N-1 for train and 1 for test
-      train_set.append((reviewerID, hist, neg_list[i], 0)) # generate N-1 negative sample for train
-    else:
-      test_set.append((reviewerID, hist, pos_list[i], 1))
-      test_set.append((reviewerID, hist, neg_list[i], 0))
+  # # 1 reviewer has N positive item: generate N negative item
+  # for i in range(1, len(pos_list)):
+  #   hist = pos_list[:i]
+  #   if i != (len(pos_list)-1):
+  #     train_set.append((reviewerID, hist, pos_list[i], 1)) # use N-1 for train and 1 for test
+  #     train_set.append((reviewerID, hist, neg_list[i], 0)) # generate N-1 negative sample for train
+  #   else:
+  #     test_set.append((reviewerID, hist, pos_list[i], 1))
+  #     test_set.append((reviewerID, hist, neg_list[i], 0))
+
+  train_set.append((reviewerID, pos_list[:-2], pos_list[-2], 1))
+  train_set.append((reviewerID, pos_list[:-2], neg_list[-2], 0))
+  test_set.append((reviewerID, pos_list[:-1], pos_list[-1], 1))
+  test_set.append((reviewerID, pos_list[:-1], neg_list[-1], 0))
+
+
 
 random.shuffle(train_set)
 random.shuffle(test_set)

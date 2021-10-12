@@ -11,7 +11,7 @@ class TFDump(object):
 
     def load_data(self):
         
-        with open('dataset_small.pkl', 'rb') as f:
+        with open('dataset.pkl', 'rb') as f:
             self.train = pickle.load(f)
             self.valid = pickle.load(f)
 
@@ -29,7 +29,7 @@ class TFDump(object):
                 example = tf.train.Example(
                     features = tf.train.Features(
                         feature = {
-                            'reviewer_id': TFDump.int_feature( record[0] ),
+                            'user_id': TFDump.int_feature( record[0] ),
                             'hist_item_list': TFDump.int_feature( record[1] ),
                             'hist_cate_list': TFDump.int_feature( record[2] ),
                             'hist_length': TFDump.int_feature( len( record[1] ) ),
@@ -45,8 +45,8 @@ class TFDump(object):
             print(n)
 
     def execute(self):
-        self.dump(self.train, 'train_small')
-        self.dump(self.valid, 'valid_small')
+        self.dump(self.train, 'train')
+        self.dump(self.valid, 'valid')
 
 
 if __name__ == '__main__':

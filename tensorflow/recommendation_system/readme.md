@@ -24,9 +24,9 @@
 - 相关执行命令
     - `DIN`:
         -  `amazon`: python3 main.py --model DIN --dataset amazon
-            - `auc:`
+            - `auc: 0.6969`
         - `movielens`: python3 main.py --model DIN --dataset movielens
-            - `auc:`
+            - `auc: 0.6533`
         - `heybox`: python3 main.py --model DIN --dataset heybox
             - `auc:`
 - 参考论文
