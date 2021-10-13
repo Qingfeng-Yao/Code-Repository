@@ -24,9 +24,9 @@
 - œ‡πÿ÷¥––√¸¡Ó
     - `heybox`:
         - `DIN`: python3 main.py --model DIN --dataset heybox; `auc: 0.7186`
-        - `MOE`: python3 main.py --model MOE --dataset heybox; 
-        - `Bias`: python3 main.py --model Bias --dataset heybox; 
-        - `UserPerExpert`: python3 main.py --model UserPerExpert --dataset heybox; 
+        - `MOE`: python3 main.py --model MOE --dataset heybox; `auc: 0.7185`
+        - `Bias`: python3 main.py --model Bias --dataset heybox; `auc: 0.7245`
+        - `UserPerExpert`: python3 main.py --model UserPerExpert --dataset heybox; `auc: 0.7262`
     - `amazon`    
         - `DIN`: python3 main.py --model DIN --dataset amazon; `auc: 0.7090`
     - `movielens`: 
