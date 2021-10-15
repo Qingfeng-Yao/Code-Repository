@@ -28,6 +28,7 @@
 - 相关库
     - sklearn
     - gensim
+    - numpy
 - 参考资料
     - [城东-特征工程](https://www.zhihu.com/question/29316149/answer/110159647)
     - [各种文本分类算法集锦，从入门到精通](https://www.heywhale.com/mw/project/5be7e948954d6e0010632ef2/content)

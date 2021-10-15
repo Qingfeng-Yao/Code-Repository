@@ -10,17 +10,10 @@
     - heybox
     - 具体的数据集处理过程及相关统计信息可参见`CTR/data`
 - 模型
-    - DIN: 0.7370/0.9137
-    - MOE: 0.7800/0.9440
-    - Bias: 0.7796/0.9435
-    - (UserInput)
-    - (UserLoss)
-    - UserCluster: 0.7910
-        - +cluster loss
-    - UserSparseExpert: 0.7843/0.9439
-        - (+DSelect k(static))
-        - (+DSelect k(per example))
-    - UserPerExpert: 0.7857/0.9437
+    - DIN
+    - MOE
+    - Bias
+    - UserPerExpert
 - 相关执行命令
     - `heybox`:
         - `DIN`: python3 main.py --model DIN --dataset heybox; `auc: 0.7186`

@@ -15,3 +15,10 @@
 - 下载嵌入时可能会报错`Model name 'bert-base-uncased' was not found in model name list`，再重新运行一下就好
 - 要使用上述bert嵌入时，也应用bert进行分词，如下函数所示
 - from pytorch_pretrained_bert import BertTokenizer; 继承BertTokenizer自定义函数时会报错`TypeError: __init__() got an unexpected keyword argument 'max_len'`，出错的地方在于`tokenizer = cls(resolved_vocab_file, *inputs, **kwargs)`；修改的思路则是在定义函数的init函数中添加参数max_len
+
+## Repo
+- 安装torchnlp应使用pytorch-nlp
+- torch版本太低如1.0.0，则无法使用torch.optim.AdamW
+
+## Training
+- 如果随着epoch增加，auc一直在下降，可以调小学习率
