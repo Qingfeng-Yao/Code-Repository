@@ -89,7 +89,10 @@ class Categorylayer(nn.Module):
     def __init__(self, categories, args):
         super(Categorylayer, self).__init__()
         self.embedding = nn.Embedding(categories, args.categ_embed_size)
-        self.output_dim = args.categ_embed_size * 2
+        if args.dataset == 'MIND':
+            self.output_dim = args.categ_embed_size * 2
+        elif args.dataset == 'heybox':
+            self.output_dim = args.categ_embed_size
 
     def forward(self, inputs): # batch_size*(negnums+1), 2
         catedembed = self.embedding(inputs) # batch_size*(negnums+1), 2, categ_embed_size
@@ -116,7 +119,10 @@ class UserEncoder(nn.Module):
         super(UserEncoder, self).__init__()
         self.dropout1 = nn.Dropout(args.droprate)
         self.dropout2 = nn.Dropout(args.droprate)
-        self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
+        if args.dataset == 'MIND':
+            self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
+        elif args.dataset == 'heybox':
+            self.newssize = args.num_heads * args.head_size + args.categ_embed_size
         self.multiatt = MultiHeadAttention(args.num_heads, self.newssize // args.num_heads, self.newssize)
         self.dense1 = nn.Linear(self.newssize, args.medialayer)
         self.dense2 = nn.Linear(args.medialayer, 1)
@@ -237,10 +243,13 @@ class NRMS(nn.Module):
                     output_model_file = os.path.join(args.savepath, "pytorch_model.bin")
                     torch.save(model_to_save.state_dict(), output_model_file)
                 best_auc = auc
+                best_mrr = mrr
+                best_ndcg5 = ndcg5
+                best_ndcg10 = ndcg10
+                self.logger.info('Best performance: auc:{}, mrr:{}, ndcg5:{}, ndcg10:{}'.format(best_auc, best_mrr, best_ndcg5, best_ndcg10))
 
     def infer(self):
         args = self.args
-        args.eval_batch_size = 1
         self.model.eval()
         predict = []
         eval_progress = tqdm(enumerate(self.data.generate_batch_eval_data()), dynamic_ncols=True,
@@ -249,6 +258,7 @@ class NRMS(nn.Module):
             news, user_click, click_len = (torch.LongTensor(x).to(args.device) for x in batch)
             with torch.no_grad():
                 click_probability = self.model(news, user_click, click_len)
+
             predict.append(click_probability.cpu().numpy())
 
         return predict # num_test_smaples, num_impression
