@@ -21,15 +21,19 @@ class MultiHeadAttention(nn.Module):
         self.wk = nn.Linear(inputsize, self.output_dim, bias=False)
         self.wv = nn.Linear(inputsize, self.output_dim, bias=False)
 
+
     def split_heads(self, x):
         x = x.view((-1, x.size(1), self.num_heads, self.head_size))
         x = x.permute([0, 2, 1, 3])
         return x
 
-    def forward(self, x, mask):
+    def forward(self, x, mask, target=None):
         # x: batch_size*(negnums+1), title_size, word_embed_size
         # mask: batch_size*(negnums+1), 1, 1, title_size
-        q = self.wq(x) # batch_size*(negnums+1), title_size, num_heads*head_size
+        if target is not None:
+            q = self.wq(target)
+        else:
+            q = self.wq(x) # batch_size*(negnums+1), title_size, num_heads*head_size
         k = self.wk(x) # batch_size*(negnums+1), title_size, num_heads*head_size
         v = self.wv(x) # batch_size*(negnums+1), title_size, num_heads*head_size
 
@@ -37,7 +41,7 @@ class MultiHeadAttention(nn.Module):
         k = self.split_heads(k) # batch_size*(negnums+1), num_heads, title_size, head_size
         v = self.split_heads(v) # batch_size*(negnums+1), num_heads, title_size, head_size
         matmul_qk = torch.matmul(q, k.permute([0, 1, 3, 2]))  # batch_size*(negnums+1), num_heads, title_size, title_size
-        scaled_attention_logits = matmul_qk / math.sqrt(q.size(-1))
+        scaled_attention_logits = matmul_qk / math.sqrt(k.size(-1))
         if mask is not None:
             scaled_attention_logits += mask
         attention_weight = F.softmax(scaled_attention_logits, dim=3) # batch_size*(negnums+1), num_heads, title_size, title_size
@@ -46,6 +50,7 @@ class MultiHeadAttention(nn.Module):
         output = output.contiguous().view((-1, output.size(1), self.output_dim)) # batch_size*(negnums+1), title_size, num_heads*head_size
 
         return output
+
 
 class TitleLayer(nn.Module):
     def __init__(self, word_dict, embeddings_matrix, args):
@@ -124,15 +129,18 @@ class UserEncoder(nn.Module):
         elif args.dataset == 'heybox':
             self.newssize = args.num_heads * args.head_size + args.categ_embed_size
         self.multiatt = MultiHeadAttention(args.num_heads, self.newssize // args.num_heads, self.newssize)
-        self.dense1 = nn.Linear(self.newssize, args.medialayer)
-        self.dense2 = nn.Linear(args.medialayer, 1)
+        if args.din:
+            self.target_att = MultiHeadAttention(args.num_heads, self.newssize // args.num_heads, self.newssize)
+        else:
+            self.dense1 = nn.Linear(self.newssize, args.medialayer)
+            self.dense2 = nn.Linear(args.medialayer, 1)
         self.newscncoder = newscncoder
         self.his_size = args.his_size
         self.device = torch.device(args.gpu if torch.cuda.is_available() else 'cpu')
 
 
-    def forward(self, inputs):
-        user_click, seq_len = inputs # batch_size, his_size, title_size+2; batch_size, 
+    def forward(self, user_click, seq_len, target=None):
+        # batch_size, his_size, title_size+2; batch_size, ; batch_size, num_heads*head_size+2*categ_embed_size
         reshape_user_click = user_click.view(-1, user_click.size(-1))
         reshape_click_embed = self.newscncoder(reshape_user_click) # batch_size*his_size, num_heads*head_size+2*categ_embed_size
         click_embed = reshape_click_embed.view(user_click.size(0), -1, reshape_click_embed.size(-1)) # batch_size, his_size, num_heads*head_size+2*categ_embed_size
@@ -146,12 +154,17 @@ class UserEncoder(nn.Module):
         selfattn_output = self.multiatt(click_embed, mask1) # batch_size, his_size, num_heads*head_size+2*categ_embed_size
         selfattn_output = self.dropout2(selfattn_output)
 
-        attention = self.dense1(selfattn_output) # batch_size, his_size, medialayer
-        attention = self.dense2(attention) # batch_size, his_size, 1
-        mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
-        attention += mask2
-        attention_weight = F.softmax(attention, 1)
-        output = torch.sum(attention_weight * selfattn_output, 1) # batch_size, num_heads*head_size+2*categ_embed_size
+        if target is not None:
+            target = torch.unsqueeze(target, 1)
+            tar_atten_emb = self.target_att(selfattn_output, mask1, target)
+            output = tar_atten_emb.view(-1, tar_atten_emb.size(-1))
+        else:
+            attention = self.dense1(selfattn_output) # batch_size, his_size, medialayer
+            attention = self.dense2(attention) # batch_size, his_size, 1
+            mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
+            attention += mask2
+            attention_weight = F.softmax(attention, 1)
+            output = torch.sum(attention_weight * selfattn_output, 1) # batch_size, num_heads*head_size+2*categ_embed_size
 
         return output
 
@@ -161,12 +174,17 @@ class nrms(nn.Module):
         self.newsencoder = NewsEncoder(word_dict, preembed, categories, args)
         self.userencoder = UserEncoder(self.newsencoder, args)
         self.criterion = nn.CrossEntropyLoss()
+        self.din = args.din
 
     def forward(self, candidate_news, clicked_news, click_len, labels=None):
         reshape_candidate_news = candidate_news.view(-1, candidate_news.size(-1)) # batch_size*(negnums+1), title_size+2
         reshape_news_embed = self.newsencoder(reshape_candidate_news) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
         news_embed = reshape_news_embed.view(candidate_news.size(0), -1, reshape_news_embed.size(-1)) # batch_size, negnums+1, num_heads*head_size+2*categ_embed_size
-        user_embed = self.userencoder([clicked_news, click_len]) # batch_size, num_heads*head_size+2*categ_embed_size
+        if self.din:
+            target = news_embed[:,-1,:]
+        else:
+            target = None
+        user_embed = self.userencoder(clicked_news, click_len, target) # batch_size, num_heads*head_size+2*categ_embed_size
         user_embed = torch.unsqueeze(user_embed, 2) # batch_size, num_heads*head_size+2*categ_embed_size, 1
         score = torch.squeeze(torch.matmul(news_embed, user_embed)) # batch_size, negnums+1
 

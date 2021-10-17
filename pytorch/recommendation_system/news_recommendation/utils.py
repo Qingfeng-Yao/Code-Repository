@@ -31,12 +31,13 @@ def parse_args():
     parser.add_argument('--gpu', help='set gpu device number 0-3', type=str, default='cuda:1')
     parser.add_argument('--use_multi_gpu', help='whether to use multi gpus', action="store_true")
     parser.add_argument('--modelname', type=str, default='nrms')
+    parser.add_argument('--din', help='whether to use target attention in user encoding', action="store_true")
     parser.add_argument('--dataset', help='path to file: MIND | heybox', type=str, default='MIND')
 
     parser.add_argument('--word_embed_size', help='word embedding size', type=int, default=300)
     parser.add_argument('--use_pretrained_embeddings', help='whether to use pretrained embeddings', action="store_false")
     parser.add_argument('--categ_embed_size', help='category embedding size', type=int, default=16) # make news_size(num_heads*head_size+categ_embed_size*2) can divide by num_heads
-    parser.add_argument('--epochs', help='max epoch', type=int, default=3)
+    parser.add_argument('--epochs', help='max epoch', type=int, default=7)
     parser.add_argument('--neg_number', help='negative samples count', type=int, default=4)
     parser.add_argument('-lr', help='learning_rate', type=float, default=5e-5)
     parser.add_argument('-l2', help='l2 regularization', type=float, default=0.0001)
@@ -196,6 +197,9 @@ class HeyDataset():
                 candidate = candidate.strip().split('-')
                 temp.append(self.newsidenx[candidate[0]])
                 temp_label.append(int(candidate[1]))
+
+            if len(temp_label)<2:
+                continue
             
             self.eval_candidate.append(temp)
             self.eval_label.append(temp_label)
@@ -376,7 +380,6 @@ class MINDDataset():
             self.eval_user_his.append(clickids)
             self.eval_click_len.append(click_len)
 
-        print(type(self.train_candidate), type(self.eval_candidate))
         self.train_candidate=np.array(self.train_candidate,dtype='int32')
         self.train_label=np.array(self.train_label,dtype='int32')
         self.train_user_his=np.array(self.train_user_his,dtype='int32')

@@ -21,17 +21,17 @@
         - behaviors.tsv: 以'\t'隔开，第一个为索引值，第二个为用户id，第三个为时间戳，第四个为历史点击序列，第五个为候选样本序列(包括多个负样本和一个正样本)
             - 历史点击序列被his_size限制，训练集中针对每一个用户分别统计正负候选帖子，然后一个训练样例由随机选取negnums个负候选帖子和一个正候选帖子构成的列表，样例对应的标签为正候选帖子的索引；此外该训练样例还包括用户历史点击序列和实际的点击序列长度(用于mask)
             - 对于测试集，历史点击序列同样被his_size限制；针对每一个用户，统计所有的正负候选样本及其1/0标签；每一个用户对应一个测试样例，包括该用户的历史点序列、实际点击序列长度、正负候选帖子列表和对应的1/0标签列表
-        - 数据集的相关统计信息: `# users: 230343`, `# posts: 737507`, `# ave words in post title: 5.91`, `# train samples: 2919193`, `# test samples: 2416250`
+        - 数据集的相关统计信息: `# users: 230343`, `# posts: 737507`, `# ave words in post title: 5.91`, `# train samples: 2919193`, `# test samples: 2413578`
 - 模型
     - NRMS
-    - KIM
+    - (+din)
 - 指标
     - AUC
     - MRR: Mean Reciprocal Rank(把标准答案在被评价系统给出结果中的排序取倒数作为它的准确度，再对所有的问题取平均)
     - nDCG(@5 or @10): Normalized Discounted Cumulative Gain(先计算增益，再计算折算因子，最后求和归一化)
 - 相关执行命令
     - `MIND`:
-        - `NRMS`: python3 main.py; `auc: `
+        - `NRMS`: python3 main.py; `auc: 66.49, mrr: 31.53, ndcg5: 34.65, ndcg10: 41.03`
     - `heybox`:
         - `NRMS`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512; `auc: `
 
