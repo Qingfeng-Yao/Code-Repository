@@ -24,6 +24,7 @@ if args.use_pretrained_embeddings and args.dataset == 'MIND':
 	preemb = GloVe(name='840B', cache="data/word_vectors_cache")
 else:
 	preemb = None
+	
 if args.modelname == 'nrms':
 	model = NRMS(preemb,args,logger,data)
 model.mtrain()

@@ -25,15 +25,25 @@
 - 模型
     - NRMS
     - (+din)
+    - (+dnn)
+    - (+moe)
+    - (+mvke)
 - 指标
     - AUC
     - MRR: Mean Reciprocal Rank(把标准答案在被评价系统给出结果中的排序取倒数作为它的准确度，再对所有的问题取平均)
     - nDCG(@5 or @10): Normalized Discounted Cumulative Gain(先计算增益，再计算折算因子，最后求和归一化)
 - 相关执行命令
     - `MIND`:
-        - `NRMS`: python3 main.py; `auc: 66.49, mrr: 31.53, ndcg5: 34.65, ndcg10: 41.03`
+        - `NRMS`: python3 main.py; `auc: 66.06, mrr: 31.34, ndcg5: 34.48, ndcg10: 40.75`
+        - `NRMS+din`: python3 main.py --din; `auc: 65.84, mrr: 31.40, ndcg5: 34.61, ndcg10: 40.81`
+        - `NRMS+dnn`: python3 main.py --din --dnn; `auc: 66.47, mrr: 31.58, ndcg5: 34.73, ndcg10: 41.03`
+        - `NRMS+moe`: python3 main.py --din --moe; `auc: 66.38, mrr: 31.44, ndcg5: 34.52, ndcg10: 40.92`
+        - `NRMS+mvke`: python3 main.py --din --mvke; `auc: 65.64, mrr: 31.08, ndcg5: 34.03, ndcg10: 40.46`
     - `heybox`:
-        - `NRMS`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512; `auc: `
+        - `NRMS`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-7; `auc: 65.79, mrr: 45.91, ndcg5: 52.06, ndcg10: 58.81`
+        - `NRMS+din`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-7 --din;
+        - `NRMS+dnn`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-7 --din --dnn;
+        - `NRMS+moe`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-7 --din --moe; 
 
 - 参考论文
     - 2019 | EMNLP | Neural News Recommendation with Multi-Head Self-Attention | Microsoft
