@@ -32,8 +32,14 @@ def parse_args():
     parser.add_argument('--use_multi_gpu', help='whether to use multi gpus', action="store_true")
     parser.add_argument('--modelname', type=str, default='nrms')
     parser.add_argument('--din', help='whether to use target attention in user encoding', action="store_true")
+    parser.add_argument('--add_op', help='whether to add self-atten and target-atten embeds to get user encoding', action="store_true")
+    parser.add_argument('--mean_op', help='whether to average self-atten and target-atten embeds to get user encoding', action="store_true")
+    parser.add_argument('--max_op', help='whether to max_pool self-atten and target-atten embeds to get user encoding', action="store_true")
+    parser.add_argument('--atten_op', help='whether to atten self-atten and target-atten embeds to get user encoding', action="store_true")
     parser.add_argument('--dnn', help='whether to use dnn to get final user representation', action="store_true")
+    
     parser.add_argument('--moe', help='whether to use mixture of experts to get final user representation', action="store_true")
+    parser.add_argument('--bias', help='whether to use bias net based on moe', action="store_true")
     parser.add_argument('--num_experts', help='number of erperts to use', type=int, default=2)
     parser.add_argument('--mvke', help='whether to use mixture of virtual kernel experts to get final user representation', action="store_true")
     parser.add_argument('--dataset', help='path to file: MIND | heybox', type=str, default='MIND')
@@ -101,8 +107,8 @@ class HeyDataset():
         for line in newsfile:
             num_line += 1
             linesplit = line.split('\t')
-            assert len(linesplit)==4, '{}'.format(linesplit)
-            self.news[linesplit[0]] = (linesplit[1].strip(), cutWord(linesplit[2].lower(), readStopwords('data/heybox/stopwords.txt')))
+            assert len(linesplit)==5, '{}'.format(linesplit)
+            self.news[linesplit[0]] = (linesplit[1], linesplit[2].strip(), cutWord(linesplit[3].lower(), readStopwords('data/heybox/stopwords.txt')))
 
         assert num_line == len(self.news)
 
@@ -114,21 +120,25 @@ class HeyDataset():
 
         self.word_dict = {'PADDING': 0}
         self.categ_dict = {'PADDING': 0}
-        self.news_features = [[0] * (self.title_size + 1)]
+        self.post_user_dict = {'PADDING': 0}
+        self.news_features = [[0] * (self.title_size + 2)]
         self.words = 0
         for newid in self.news:
             title = []
             features = self.news[newid]
-            if features[0] not in self.categ_dict:
-                self.categ_dict[features[0]] = len(self.categ_dict)
-            for w in features[1]:
+            if features[0] not in self.post_user_dict:
+                self.post_user_dict[features[0]] = len(self.post_user_dict)
+            if features[1] not in self.categ_dict:
+                self.categ_dict[features[1]] = len(self.categ_dict)
+            for w in features[2]:
                 if w not in self.word_dict:
                     self.word_dict[w] = len(self.word_dict)
                 title.append(self.word_dict[w])
             self.words += len(title)
             title = title[:self.title_size]
             title = title + [0] * (self.title_size - len(title))
-            title.append(self.categ_dict[features[0]])
+            title.append(self.post_user_dict[features[0]])
+            title.append(self.categ_dict[features[1]])
             self.news_features.append(title)
 
         print("num of posts: {}".format(len(self.news)))
@@ -223,8 +233,8 @@ class HeyDataset():
         np.random.shuffle(idlist)
         batches = [idlist[range(self.batch_size*i, min(len(self.train_label),self.batch_size*(i+1)))] for i in range(len(self.train_label)//self.batch_size+1)]
         for i in batches:
-            item = self.news_features[self.train_candidate[i]] # batch_size, negnums+1, title_size+1
-            user = self.news_features[self.train_user_his[i]] # batch_size, his_size, title_size+1
+            item = self.news_features[self.train_candidate[i]] # batch_size, negnums+1, title_size+2
+            user = self.news_features[self.train_user_his[i]] # batch_size, his_size, title_size+2
             user_len = self.train_his_len[i] # batch_size, 
 
             yield (item,user,user_len,self.train_label[i]) # label: batch_size, 
@@ -369,7 +379,7 @@ class MINDDataset():
             click_len = len(clickids)
             clickids = clickids + ['NULL'] * (self.his_size - len(clickids))
             clickids = [self.newsidenx[n] for n in clickids]
-
+            
             temp = []
             temp_label = []
             for candidate in linesplit[4].split(' '):
@@ -378,7 +388,7 @@ class MINDDataset():
                 temp_label.append(int(candidate[1]))
                 if (candidate[1] == '1'):
                     self.clicks += 1
-            
+
             self.eval_candidate.append(temp)
             self.eval_label.append(temp_label)
             self.eval_user_his.append(clickids)
@@ -391,6 +401,7 @@ class MINDDataset():
         self.news_features = np.array(self.news_features)
 
         print("users: {}, impressions: {}, clicks: {}".format(len(self.users), self.impressions, self.clicks))
+        print("train samples: {}, test samples: {}".format(len(self.train_candidate), len(self.eval_candidate)))
 
     def generate_batch_train_data(self):
         idlist = np.arange(len(self.train_label))

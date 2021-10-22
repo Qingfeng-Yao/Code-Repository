@@ -102,18 +102,25 @@ class Categorylayer(nn.Module):
         return output
 
 class NewsEncoder(nn.Module):
-    def __init__(self, word_dict, preembed, categories, args):
+    def __init__(self, word_dict, preembed, categories, users, args):
         super(NewsEncoder, self).__init__()
         self.titlelayer = TitleLayer(word_dict, preembed, args)
         self.categlayer = Categorylayer(categories, args)
-        self.bodylayer = None
-        self.entitylayer = None
+        if users is not None:
+            self.userlayer = Categorylayer(users, args)
+        else:
+            self.userlayer = None
         self.title_size = args.title_size
 
     def forward(self, inputs): # batch_size*(negnums+1), title_size+2
         title_embed = self.titlelayer(inputs[:, :self.title_size]) # batch_size*(negnums+1), num_heads*head_size
-        categ_embed = self.categlayer(inputs[:, self.title_size:]) # batch_size*(negnums+1), 2*categ_embed_size
-        news_embed = torch.cat((title_embed, categ_embed), 1) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
+        if self.userlayer is not None:
+            user_embed = self.userlayer(inputs[:, self.title_size: self.title_size+1]) # batch_size*(negnums+1), categ_embed_size
+            categ_embed = self.categlayer(inputs[:, self.title_size+1:]) # batch_size*(negnums+1), categ_embed_size
+            news_embed = torch.cat((title_embed, user_embed, categ_embed), 1) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
+        else:
+            categ_embed = self.categlayer(inputs[:, self.title_size:]) # batch_size*(negnums+1), 2*categ_embed_size
+            news_embed = torch.cat((title_embed, categ_embed), 1) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
         return news_embed
 
 class UserEncoder(nn.Module):
@@ -121,10 +128,7 @@ class UserEncoder(nn.Module):
         super(UserEncoder, self).__init__()
         self.dropout1 = nn.Dropout(args.droprate)
         self.dropout2 = nn.Dropout(args.droprate)
-        if args.dataset == 'MIND':
-            self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
-        elif args.dataset == 'heybox':
-            self.newssize = args.num_heads * args.head_size + args.categ_embed_size
+        self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
         self.multiatt = MultiHeadAttention(args.num_heads, self.newssize // args.num_heads, self.newssize)
         
         self.target_att = MultiHeadAttention(args.num_heads, self.newssize // args.num_heads, self.newssize)
@@ -134,6 +138,10 @@ class UserEncoder(nn.Module):
         self.newscncoder = newscncoder
         self.his_size = args.his_size
         self.device = torch.device(args.gpu if torch.cuda.is_available() else 'cpu')
+        self.add_op = args.add_op
+        self.mean_op = args.mean_op
+        self.max_op = args.max_op
+        self.atten_op = args.atten_op
         self.dnn = args.dnn 
         self.moe = args.moe
         self.mvke = args.mvke
@@ -154,7 +162,7 @@ class UserEncoder(nn.Module):
         selfattn_output = self.multiatt(click_embed, mask1, click_embed, click_embed) # batch_size, his_size, num_heads*head_size+2*categ_embed_size
         selfattn_output = self.dropout2(selfattn_output)
 
-        if not (self.dnn or self.moe or self.mvke):
+        if not (self.add_op or self.mean_op or self.max_op or self.atten_op or self.dnn or self.moe or self.mvke):
             if target is not None:
                 output = self.target_att(selfattn_output, mask1, target, selfattn_output)
             else:
@@ -180,24 +188,32 @@ class UserEncoder(nn.Module):
         return output
 
 class nrms(nn.Module):
-    def __init__(self, word_dict, preembed, categories, args):
+    def __init__(self, word_dict, preembed, categories, users, args):
         super(nrms, self).__init__()
         # make news and user's embedding dim the same
-        # training sample and testing sample have different constructions
-        self.newsencoder = NewsEncoder(word_dict, preembed, categories, args)
+        # training sample and testing sample have different constructions: negnums+1, 1
+        # consider two user representations: self attention and target attention
+        self.newsencoder = NewsEncoder(word_dict, preembed, categories, users, args)
         self.userencoder = UserEncoder(self.newsencoder, args)
         self.criterion = nn.CrossEntropyLoss()
         self.device = torch.device(args.gpu if torch.cuda.is_available() else 'cpu')
-        if args.dataset == 'MIND':
-            self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
-        elif args.dataset == 'heybox':
-            self.newssize = args.num_heads * args.head_size + args.categ_embed_size
+        self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
         self.din = args.din # target attention
+        self.add_op = args.add_op
+        self.mean_op = args.mean_op
+        self.max_op = args.max_op
+        self.atten_op = args.atten_op
+        if self.atten_op:
+            self.atten_op_dense1 = nn.Linear(self.newssize, args.medialayer)
+            self.atten_op_dense2 = nn.Linear(args.medialayer, 1)
+        
         self.dnn = args.dnn # single expert
         if self.dnn:
             self.dnn_dense_1 = nn.Linear(self.newssize*2, args.medialayer)
             self.dnn_dense_2 = nn.Linear(args.medialayer, self.newssize)
+
         self.moe = args.moe # multiple experts
+        self.bias = args.bias
         if self.moe:
             self.expert_nets = []
             for n in range(args.num_experts):
@@ -206,6 +222,9 @@ class nrms(nn.Module):
                 self.expert_nets.append([expert_net_1, expert_net_2])
             self.gate_net_1 = nn.Linear(self.newssize*2, args.medialayer)
             self.gate_net_2 = nn.Linear(args.medialayer, args.num_experts)
+            if self.bias:
+                self.bias_dense_1 = nn.Linear(self.newssize*2, args.medialayer)
+                self.bias_dense_2 = nn.Linear(args.medialayer, self.newssize)
         self.mvke = args.mvke # multiple virtual kernel experts
         if self.mvke:
             self.user_qs = nn.Parameter(torch.ones(args.num_experts, self.newssize))
@@ -227,8 +246,43 @@ class nrms(nn.Module):
             target = news_embed
         else:
             target = None
-        user_embed = self.userencoder(clicked_news, click_len, target) # batch_size, (negnums+1), num_heads*head_size+2*categ_embed_size
-        if self.dnn:
+        user_embed = self.userencoder(clicked_news, click_len, target) 
+        if self.add_op:
+            user_target_embed, user_self_embed = user_embed
+            b_size, l_size, e_size = user_self_embed.size(0), user_target_embed.size(1), user_self_embed.size(1)
+            user_self_embed = torch.unsqueeze(user_self_embed, 1).expand(b_size, l_size, e_size)
+            user_final_embed = user_target_embed+user_self_embed
+            score = torch.matmul(news_embed, user_final_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
+            score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1)) # batch_size, negnums+1
+        elif self.mean_op:
+            user_target_embed, user_self_embed = user_embed
+            b_size, l_size, e_size = user_self_embed.size(0), user_target_embed.size(1), user_self_embed.size(1)
+            user_self_embed = torch.unsqueeze(user_self_embed, 1).expand(b_size, l_size, e_size)
+            user_stack_embed = torch.stack([user_target_embed, user_self_embed], dim=2)
+            user_final_embed = torch.mean(user_stack_embed, dim=2)
+            score = torch.matmul(news_embed, user_final_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
+            score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1)) # batch_size, negnums+1
+        elif self.max_op:
+            user_target_embed, user_self_embed = user_embed
+            b_size, l_size, e_size = user_self_embed.size(0), user_target_embed.size(1), user_self_embed.size(1)
+            user_self_embed = torch.unsqueeze(user_self_embed, 1).expand(b_size, l_size, e_size)
+            user_stack_embed = torch.stack([user_target_embed, user_self_embed], dim=2)
+            user_final_embed, _ = torch.max(user_stack_embed, dim=2)
+            score = torch.matmul(news_embed, user_final_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
+            score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1)) # batch_size, negnums+1
+        elif self.atten_op:
+            user_target_embed, user_self_embed = user_embed
+            b_size, l_size, e_size = user_self_embed.size(0), user_target_embed.size(1), user_self_embed.size(1)
+            user_self_embed = torch.unsqueeze(user_self_embed, 1).expand(b_size, l_size, e_size)
+            user_stack_embed = torch.stack([user_target_embed, user_self_embed], dim=2)
+            atten_hidden_emb = self.atten_op_dense1(user_stack_embed)
+            atten_weights = self.atten_op_dense2(atten_hidden_emb)
+            attention_weight = F.softmax(atten_weights, 2)
+            user_final_embed = torch.sum(attention_weight * user_stack_embed, 2)
+            score = torch.matmul(news_embed, user_final_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
+            score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1)) # batch_size, negnums+1
+
+        elif self.dnn:
             user_target_embed, user_self_embed = user_embed
             b_size, l_size, e_size = user_self_embed.size(0), user_target_embed.size(1), user_self_embed.size(1)
             user_self_embed = torch.unsqueeze(user_self_embed, 1).expand(b_size, l_size, e_size)
@@ -236,7 +290,7 @@ class nrms(nn.Module):
             hidden_dnn = self.dnn_dense_1(user_concat_embed)
             user_final_embed = self.dnn_dense_2(hidden_dnn) 
             score = torch.matmul(news_embed, user_final_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
-            score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1))
+            score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1)) # batch_size, negnums+1
         elif self.moe:
             user_target_embed, user_self_embed = user_embed
             b_size, l_size, e_size = user_self_embed.size(0), user_target_embed.size(1), user_self_embed.size(1)
@@ -252,6 +306,10 @@ class nrms(nn.Module):
             gate_out = torch.softmax(gate_out, dim=-1)
 
             user_final_embed = torch.sum(torch.unsqueeze(gate_out, -1)*torch.stack(user_outs, dim=2), dim=2)
+            if self.bias:
+                hidden_dnn = self.bias_dense_1(user_concat_embed)
+                user_final_embed_bias = self.bias_dense_2(hidden_dnn)
+                user_final_embed += user_final_embed_bias
             score = torch.matmul(news_embed, user_final_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
             score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1))
         elif self.mvke:
@@ -272,7 +330,7 @@ class nrms(nn.Module):
             score = torch.matmul(news_embed, user_final_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
             score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1))
         else:
-            if len(user_embed.shape) == 3:
+            if len(user_embed.shape) == 3: # batch_size, negnums+1, num_heads*head_size+2*categ_embed_size
                 score = torch.matmul(news_embed, user_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
                 score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1)) # batch_size, negnums+1
             else:
@@ -291,7 +349,11 @@ class NRMS(nn.Module):
     def __init__(self, preembed, args, logger, data):
         super(NRMS, self).__init__()
         args.device = torch.device(args.gpu if torch.cuda.is_available() else 'cpu')
-        self.model = nrms(data.word_dict, preembed, len(data.categ_dict), args).to(args.device)
+        if args.dataset == 'heybox':
+            userinfo = len(data.post_user_dict)
+        else:
+            userinfo = None
+        self.model = nrms(data.word_dict, preembed, len(data.categ_dict), userinfo, args).to(args.device)
         self.args = args
         self.logger = logger
         self.data = data
