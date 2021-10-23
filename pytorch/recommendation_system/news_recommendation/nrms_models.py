@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from utils import mrr_score, ndcg_score
+from bert import BERT
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, num_heads, head_size, inputsize):
@@ -27,26 +28,36 @@ class MultiHeadAttention(nn.Module):
         x = x.permute([0, 2, 1, 3])
         return x
 
-    def forward(self, key, key_mask, query, value):
+    def forward(self, key, key_mask, query, value, no_multi_head=False, return_w=False):
         # key: batch_size*(negnums+1), title_size, word_embed_size
         # key_mask: batch_size*(negnums+1), 1, 1, title_size
         q = self.wq(query) # batch_size*(negnums+1), title_size, num_heads*head_size
         k = self.wk(key) # batch_size*(negnums+1), title_size, num_heads*head_size
         v = self.wv(value) # batch_size*(negnums+1), title_size, num_heads*head_size
+        if not no_multi_head:
+            q = self.split_heads(q) # batch_size*(negnums+1), num_heads, title_size, head_size
+            k = self.split_heads(k) # batch_size*(negnums+1), num_heads, title_size, head_size
+            v = self.split_heads(v) # batch_size*(negnums+1), num_heads, title_size, head_size
+            matmul_qk = torch.matmul(q, k.permute([0, 1, 3, 2]))  # batch_size*(negnums+1), num_heads, title_size, title_size
+            scaled_attention_logits = matmul_qk / math.sqrt(k.size(-1))
+            if key_mask is not None:
+                scaled_attention_logits += key_mask
+            attention_weight = F.softmax(scaled_attention_logits, dim=3) # batch_size*(negnums+1), num_heads, title_size, title_size
+            output = torch.matmul(attention_weight, v) # batch_size*(negnums+1), num_heads, title_size, head_size
+            output = output.permute([0, 2, 1, 3]) # batch_size*(negnums+1), title_size, num_heads, head_size
+            output = output.contiguous().view((-1, output.size(1), self.output_dim)) # batch_size*(negnums+1), title_size, num_heads*head_size
+        else:
+            matmul_qk = torch.matmul(q, k.permute([0, 2, 1]))  # batch_size*(negnums+1), title_size, title_size
+            scaled_attention_logits = matmul_qk / math.sqrt(k.size(-1))
+            if key_mask is not None:
+                scaled_attention_logits += torch.squeeze(key_mask, dim=1)
+            attention_weight = F.softmax(scaled_attention_logits, dim=2) # batch_size*(negnums+1), title_size, title_size
+            output = torch.matmul(attention_weight, v) # batch_size*(negnums+1), title_size, num_heads*head_size
 
-        q = self.split_heads(q) # batch_size*(negnums+1), num_heads, title_size, head_size
-        k = self.split_heads(k) # batch_size*(negnums+1), num_heads, title_size, head_size
-        v = self.split_heads(v) # batch_size*(negnums+1), num_heads, title_size, head_size
-        matmul_qk = torch.matmul(q, k.permute([0, 1, 3, 2]))  # batch_size*(negnums+1), num_heads, title_size, title_size
-        scaled_attention_logits = matmul_qk / math.sqrt(k.size(-1))
-        if key_mask is not None:
-            scaled_attention_logits += key_mask
-        attention_weight = F.softmax(scaled_attention_logits, dim=3) # batch_size*(negnums+1), num_heads, title_size, title_size
-        output = torch.matmul(attention_weight, v) # batch_size*(negnums+1), num_heads, title_size, head_size
-        output = output.permute([0, 2, 1, 3]) # batch_size*(negnums+1), title_size, num_heads, head_size
-        output = output.contiguous().view((-1, output.size(1), self.output_dim)) # batch_size*(negnums+1), title_size, num_heads*head_size
-
-        return output
+        if return_w:
+            return output, attention_weight
+        else:
+            return output
 
 
 class TitleLayer(nn.Module):
@@ -55,12 +66,14 @@ class TitleLayer(nn.Module):
         self.output_dim = args.num_heads * args.head_size
         self.medialayer = args.medialayer
         if (embeddings_matrix is not None):
-            # self.embedding = nn.Embedding.from_pretrained(embeddings_matrix)
             self.embedding = nn.Embedding(len(word_dict), args.word_embed_size)
             for i, token in enumerate(word_dict.keys()):
                 self.embedding.weight.data[i] = embeddings_matrix[token]
         else:
-            self.embedding = nn.Embedding(len(word_dict), args.word_embed_size)
+            if args.use_pretrained_embeddings and args.dataset == 'heybox':
+                self.embedding = BERT(pretrained_model_name='bert-base-chinese')
+            else:
+                self.embedding = nn.Embedding(len(word_dict), args.word_embed_size)
         self.dropout1 = nn.Dropout(args.droprate)
         self.dropout2 = nn.Dropout(args.droprate)
         self.multiatt = MultiHeadAttention(args.num_heads, args.head_size, args.word_embed_size)
@@ -146,6 +159,8 @@ class UserEncoder(nn.Module):
         self.moe = args.moe
         self.mvke = args.mvke
 
+        self.cross_atten = args.cross_atten
+
 
     def forward(self, user_click, seq_len, target=None):
         # batch_size, his_size, title_size+2; batch_size, ; batch_size, negnums+1, num_heads*head_size+2*categ_embed_size
@@ -164,7 +179,17 @@ class UserEncoder(nn.Module):
 
         if not (self.add_op or self.mean_op or self.max_op or self.atten_op or self.dnn or self.moe or self.mvke):
             if target is not None:
-                output = self.target_att(selfattn_output, mask1, target, selfattn_output)
+                if self.cross_atten:
+                    _, ta_w = self.target_att(selfattn_output, mask1, target, selfattn_output, no_multi_head=True, return_w=True)
+                    attention = self.dense1(selfattn_output) # batch_size, his_size, medialayer
+                    attention = self.dense2(attention) # batch_size, his_size, 1
+                    mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
+                    attention += mask2
+                    sa_w = F.softmax(attention, 1)
+                    mid_output = sa_w * selfattn_output
+                    output = torch.matmul(ta_w, mid_output)
+                else:
+                    output = self.target_att(selfattn_output, mask1, target, selfattn_output)
             else:
                 attention = self.dense1(selfattn_output) # batch_size, his_size, medialayer
                 attention = self.dense2(attention) # batch_size, his_size, 1
@@ -199,6 +224,8 @@ class nrms(nn.Module):
         self.device = torch.device(args.gpu if torch.cuda.is_available() else 'cpu')
         self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
         self.din = args.din # target attention
+        self.cross_atten = args.cross_atten
+
         self.add_op = args.add_op
         self.mean_op = args.mean_op
         self.max_op = args.max_op
@@ -242,7 +269,7 @@ class nrms(nn.Module):
         reshape_candidate_news = candidate_news.view(-1, candidate_news.size(-1)) # batch_size*(negnums+1), title_size+2
         reshape_news_embed = self.newsencoder(reshape_candidate_news) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
         news_embed = reshape_news_embed.view(candidate_news.size(0), -1, reshape_news_embed.size(-1)) # batch_size, negnums+1, num_heads*head_size+2*categ_embed_size
-        if self.din:
+        if self.din or self.cross_atten:
             target = news_embed
         else:
             target = None

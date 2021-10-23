@@ -13,6 +13,7 @@
 ## Bert
 - from pytorch_pretrained_bert.modeling import BertModel; BertModel.from_pretrained函数中的名字参数已经改为`pretrained_model_name_or_path`
 - 下载嵌入时可能会报错`Model name 'bert-base-uncased' was not found in model name list`，再重新运行一下就好
+    - 
 - 要使用上述bert嵌入时，也应用bert进行分词，如下函数所示
 - from pytorch_pretrained_bert import BertTokenizer; 继承BertTokenizer自定义函数时会报错`TypeError: __init__() got an unexpected keyword argument 'max_len'`，出错的地方在于`tokenizer = cls(resolved_vocab_file, *inputs, **kwargs)`；修改的思路则是在定义函数的init函数中添加参数max_len
 
