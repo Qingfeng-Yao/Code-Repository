@@ -46,10 +46,11 @@
         - `NRMS+max`: python3 main.py --use_pretrained_embeddings --din --max_op; `auc: 66.08, mrr: 31.17, ndcg5: 34.23, ndcg10: 40.67`
         - `NRMS+atten`: python3 main.py --use_pretrained_embeddings --din --atten_op; `auc: 66.01, mrr: 31.25, ndcg5: 34.51, ndcg10: 40.75`
         - `NRMS+dnn`: python3 main.py --use_pretrained_embeddings --din --dnn; `auc: 66.65, mrr: 31.38, ndcg5: 34.66, ndcg10: 41.02`
+        - `NRMS+dnn`: python3 main.py --use_pretrained_embeddings --din --ua_dnn;
     - `heybox`:
-        - `NRMS`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 1e-6; `auc: 66.53, mrr: 47.01, ndcg5: 53.07, ndcg10: 59.65`
-        - `NRMS+bert`: python3 main.py --dataset heybox --word_embed_size 768 --use_pretrained_embeddings --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 1e-6;
-        - `NRMS+dnn`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 1e-6 --din --dnn;
+        - `NRMS`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-6; `auc: 66.53, mrr: 47.01, ndcg5: 53.07, ndcg10: 59.65`
+        - `NRMS+bert`: python3 main.py --dataset heybox --word_embed_size 768 --use_pretrained_embeddings --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-6;
+        - `NRMS+dnn`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-6 --din --dnn;
 
 - ²Î¿¼ÂÛÎÄ
     - 2019 | EMNLP | Neural News Recommendation with Multi-Head Self-Attention | Microsoft

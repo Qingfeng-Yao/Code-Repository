@@ -40,6 +40,7 @@ def parse_args():
     parser.add_argument('--max_op', help='whether to max_pool self-atten and target-atten embeds to get user encoding', action="store_true")
     parser.add_argument('--atten_op', help='whether to atten self-atten and target-atten embeds to get user encoding', action="store_true")
     parser.add_argument('--dnn', help='whether to use dnn to get final user representation', action="store_true")
+    parser.add_argument('--ua_dnn', help='whether to use user attention to get final user representation', action="store_true")
     
     parser.add_argument('--moe', help='whether to use mixture of experts to get final user representation', action="store_true")
     parser.add_argument('--bias', help='whether to use bias net based on moe', action="store_true")
@@ -165,6 +166,7 @@ class HeyDataset():
         self.train_candidate = []
         self.train_label = []
         self.train_his_len = []
+        self.train_user_id = []
         self.users = {}
 
         for line in trainuserfile:
@@ -203,11 +205,13 @@ class HeyDataset():
                 self.train_label.append(self.negnums)
                 self.train_user_his.append(clickids)
                 self.train_his_len.append(click_len)
+                self.train_user_id.append(self.users[userid])
 
         self.eval_candidate = []
         self.eval_label = []
         self.eval_user_his = []
         self.eval_click_len = []
+        self.eval_user_id = []
 
         for line in testuserfile:
             linesplit = line.split('\t')
@@ -235,11 +239,13 @@ class HeyDataset():
             self.eval_label.append(temp_label)
             self.eval_user_his.append(clickids)
             self.eval_click_len.append(click_len)
+            self.eval_user_id.append(self.users[userid])
 
         self.train_candidate=np.array(self.train_candidate,dtype='int32')
         self.train_label=np.array(self.train_label,dtype='int32')
         self.train_user_his=np.array(self.train_user_his,dtype='int32')
         self.train_his_len = np.array(self.train_his_len, dtype='int32')
+        self.train_user_id = np.array(self.train_user_id, dtype='int32')
         self.news_features = np.array(self.news_features)
 
         print("users: {}, train samples: {}, test samples: {}".format(len(self.users), len(self.train_candidate), len(self.eval_candidate)))
@@ -252,8 +258,9 @@ class HeyDataset():
             item = self.news_features[self.train_candidate[i]] # batch_size, negnums+1, title_size+2
             user = self.news_features[self.train_user_his[i]] # batch_size, his_size, title_size+2
             user_len = self.train_his_len[i] # batch_size, 
+            user_id = self.train_user_id[i] # batch_size, 
 
-            yield (item,user,user_len,self.train_label[i]) # label: batch_size, 
+            yield (item,user,user_len,user_id,self.train_label[i]) # label: batch_size, 
 
 
     def generate_batch_eval_data(self):
@@ -261,9 +268,10 @@ class HeyDataset():
             news = [self.news_features[self.eval_candidate[i]]] # 1, num_impression, title_size+1
             user = [self.news_features[self.eval_user_his[i]]] # 1, his_size, title_size+1
             user_len = [self.eval_click_len[i]] # 1, 
+            user_id = [self.eval_user_id[i]] # 1, 
             # test_label = self.eval_label[i]
 
-            yield (news,user,user_len)
+            yield (news,user,user_len,user_id)
 
 
 class MINDDataset():
@@ -336,6 +344,7 @@ class MINDDataset():
         self.train_candidate = []
         self.train_label = []
         self.train_his_len = []
+        self.train_user_id = []
         self.clicks = 0
         self.impressions = 0
         self.users = {}
@@ -377,11 +386,13 @@ class MINDDataset():
                 self.train_label.append(self.negnums)
                 self.train_user_his.append(clickids)
                 self.train_his_len.append(click_len)
+                self.train_user_id.append(self.users[userid])
 
         self.eval_candidate = []
         self.eval_label = []
         self.eval_user_his = []
         self.eval_click_len = []
+        self.eval_user_id = []
 
         for line in testuserfile:
             linesplit = line.split('\t')
@@ -409,11 +420,13 @@ class MINDDataset():
             self.eval_label.append(temp_label)
             self.eval_user_his.append(clickids)
             self.eval_click_len.append(click_len)
+            self.eval_user_id.append(self.users[userid])
 
         self.train_candidate=np.array(self.train_candidate,dtype='int32')
         self.train_label=np.array(self.train_label,dtype='int32')
         self.train_user_his=np.array(self.train_user_his,dtype='int32')
         self.train_his_len = np.array(self.train_his_len, dtype='int32')
+        self.train_user_id = np.array(self.train_user_id, dtype='int32')
         self.news_features = np.array(self.news_features)
 
         print("users: {}, impressions: {}, clicks: {}".format(len(self.users), self.impressions, self.clicks))
@@ -427,8 +440,9 @@ class MINDDataset():
             item = self.news_features[self.train_candidate[i]] # batch_size, negnums+1, title_size+2
             user = self.news_features[self.train_user_his[i]] # batch_size, his_size, title_size+2
             user_len = self.train_his_len[i] # batch_size, 
+            user_id = self.train_user_id[i] # batch_size, 
 
-            yield (item,user,user_len,self.train_label[i]) # label: batch_size, 
+            yield (item,user,user_len,user_id,self.train_label[i]) # label: batch_size, 
 
 
     def generate_batch_eval_data(self):
@@ -436,6 +450,7 @@ class MINDDataset():
             news = [self.news_features[self.eval_candidate[i]]] # 1, num_impression, title_size+2
             user = [self.news_features[self.eval_user_his[i]]] # 1, his_size, title_size+2
             user_len = [self.eval_click_len[i]] # 1, 
+            user_id = [self.eval_user_id[i]] # 1, 
             # test_label = self.eval_label[i]
 
-            yield (news,user,user_len)
+            yield (news,user,user_len,user_id)
