@@ -12,6 +12,7 @@
         - [数据链接](https://msnews.github.io/index.html)
         - 使用预训练向量Glove
         - 数据集的相关统计信息: `# users: 94057`, `# news: 65238`, `# ave words in news title: 11.77`, `# impressions: 230117`, `# clicks: 347727`, `# train samples: 236344`, `# test samples: 73152`
+            - (bert): `# ave words in news title: 13.87`
             - 一个impression表示一条行为记录，一个click表示一条行为记录中一个候选正样本
     - heybox
         - 原始数据包括用户日志数据(形如xxxx-xx-xx-contact.csv)、帖子数据(形如links_x.json)；以MIND的方式处理数据
@@ -25,37 +26,49 @@
             - (bert): `# ave tokens in post title: 12.66`
 - 模型
     - NRMS
+    - (+bert)
     - (+din)
+        - (+score_add)
+        - (+cross_atten)
         - (+add)
         - (+mean)
         - (+max)
         - (+atten)
-        - (+dnn)
-    - (+cross_atten)
+        - `+dnn`
+        - (+ua_dnn)
+        - (+moe)
+        - (+bias)
 - 指标
     - AUC
     - MRR: Mean Reciprocal Rank(把标准答案在被评价系统给出结果中的排序取倒数作为它的准确度，再对所有的问题取平均)
     - nDCG(@5 or @10): Normalized Discounted Cumulative Gain(先计算增益，再计算折算因子，最后求和归一化)
 - 相关执行命令
     - `MIND`:
-        - `NRMS`: python3 main.py --use_pretrained_embeddings; `auc: 66.26, mrr: 31.42, ndcg5: 34.52, ndcg10: 40.92`
-        - `NRMS+din`: python3 main.py --use_pretrained_embeddings --din; `auc: 66.17, mrr: 31.49, ndcg5: 34.72, ndcg10: 41.04`
-        - `NRMS+cross_atten`: python3 main.py --use_pretrained_embeddings --cross_atten; `auc: 66.26, mrr: 30.93, ndcg5: 34.05, ndcg10: 40.55`
-        - `NRMS+add`: python3 main.py --use_pretrained_embeddings --din --add_op; `auc: 65.55, mrr: 30.88, ndcg5: 33.89, ndcg10: 40.29`
-        - `NRMS+mean`: python3 main.py --use_pretrained_embeddings --din --mean_op; `auc: 65.90, mrr: 31.06, ndcg5: 34.37, ndcg10: 40.66`
-        - `NRMS+max`: python3 main.py --use_pretrained_embeddings --din --max_op; `auc: 66.08, mrr: 31.17, ndcg5: 34.23, ndcg10: 40.67`
-        - `NRMS+atten`: python3 main.py --use_pretrained_embeddings --din --atten_op; `auc: 66.01, mrr: 31.25, ndcg5: 34.51, ndcg10: 40.75`
-        - `NRMS+dnn`: python3 main.py --use_pretrained_embeddings --din --dnn; `auc: 66.65, mrr: 31.38, ndcg5: 34.66, ndcg10: 41.02`
-        - `NRMS+dnn`: python3 main.py --use_pretrained_embeddings --din --ua_dnn;
+        - `NRMS`: python3 main.py --pretrained_embeddings glove; `auc: 66.26, mrr: 31.42, ndcg5: 34.52, ndcg10: 40.92`
+        - `NRMS+bert`: python3 main.py --word_embed_size 768 --pretrained_embeddings bert --batch_size 4;
+        - `NRMS+din`: python3 main.py --pretrained_embeddings glove --din; `auc: 66.17, mrr: 31.49, ndcg5: 34.72, ndcg10: 41.04`
+        - `NRMS+score_add`: python3 main.py --pretrained_embeddings glove --din --score_add; `auc: 65.95, mrr: 31.08, ndcg5: 34.28, ndcg10: 40.56`
+        - `NRMS+cross_atten`: python3 main.py --pretrained_embeddings glove --cross_atten; `auc: 65.88, mrr: 30.89, ndcg5: 33.99, ndcg10: 40.41`
+        - `NRMS+add`: python3 main.py --pretrained_embeddings glove --din --add_op; `auc: 65.55, mrr: 30.88, ndcg5: 33.89, ndcg10: 40.29`
+        - `NRMS+mean`: python3 main.py --pretrained_embeddings glove --din --mean_op; `auc: 65.90, mrr: 31.06, ndcg5: 34.37, ndcg10: 40.66`
+        - `NRMS+max`: python3 main.py --pretrained_embeddings glove --din --max_op; `auc: 66.08, mrr: 31.17, ndcg5: 34.23, ndcg10: 40.67`
+        - `NRMS+atten`: python3 main.py --pretrained_embeddings glove --din --atten_op; `auc: 66.01, mrr: 31.15, ndcg5: 34.19, ndcg10: 40.59`
+        - `NRMS+dnn`: python3 main.py --pretrained_embeddings glove --din --dnn; `auc: 66.65, mrr: 31.38, ndcg5: 34.66, ndcg10: 41.02`
+        - `NRMS+ua_dnn`: python3 main.py --pretrained_embeddings glove --din --ua_dnn; `auc: 66.04, mrr: 31.38, ndcg5: 34.41, ndcg10: 40.78`
+        - `NRMS+moe`: python3 main.py --pretrained_embeddings glove --din --moe; `auc: 66.12, mrr: 31.43, ndcg5: 34.64, ndcg10: 40.88`
+        - `NRMS+bias`: python3 main.py --pretrained_embeddings glove --din --moe --bias; `auc: 65.88, mrr: 31.22, ndcg5: 34.41, ndcg10: 40.74`
+        - `NRMS+mvke`: python3 main.py --pretrained_embeddings glove --din --mvke; `auc: 66.45, mrr: 31.29, ndcg5: 34.62, ndcg10: 40.92`
     - `heybox`:
         - `NRMS`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-6; `auc: 66.53, mrr: 47.01, ndcg5: 53.07, ndcg10: 59.65`
-        - `NRMS+bert`: python3 main.py --dataset heybox --word_embed_size 768 --use_pretrained_embeddings --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-6;
+        - `NRMS+bert`: python3 main.py --dataset heybox --word_embed_size 768 --pretrained_embeddings bert --title_size 10 --his_size 50 --neg_number 10 --batch_size 4 --lr 5e-6;
         - `NRMS+dnn`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-6 --din --dnn;
 
 - 参考论文
     - 2019 | EMNLP | Neural News Recommendation with Multi-Head Self-Attention | Microsoft
+    - 2021 | SIGIR | Empowering News Recommendation with Pre-trained Language Models | Microsoft
 - 参考资料
     - [wuch15/EMNLP2019-NRMS](https://github.com/wuch15/EMNLP2019-NRMS)
+    - [wuch15/PLM4NewsRec](https://github.com/wuch15/PLM4NewsRec)
     
 
     

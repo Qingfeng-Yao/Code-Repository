@@ -70,8 +70,11 @@ class TitleLayer(nn.Module):
             for i, token in enumerate(word_dict.keys()):
                 self.embedding.weight.data[i] = embeddings_matrix[token]
         else:
-            if args.use_pretrained_embeddings and args.dataset == 'heybox':
-                self.embedding = BERT(pretrained_model_name='bert-base-chinese')
+            if args.pretrained_embeddings == 'bert':
+                if args.dataset == 'heybox':
+                    self.embedding = BERT(pretrained_model_name='data/ch_bert_cache', cache_dir='data/ch_bert_cache')
+                elif args.dataset == 'MIND':
+                    self.embedding = BERT(pretrained_model_name='data/en_bert_cache', cache_dir='data/en_bert_cache')
             else:
                 self.embedding = nn.Embedding(len(word_dict), args.word_embed_size)
         self.dropout1 = nn.Dropout(args.droprate)
@@ -166,6 +169,7 @@ class UserEncoder(nn.Module):
         self.max_op = args.max_op
         self.atten_op = args.atten_op
         self.dnn = args.dnn 
+        self.score_add = args.score_add
         self.ua_dnn = args.ua_dnn
         self.moe = args.moe
         self.mvke = args.mvke
@@ -188,19 +192,17 @@ class UserEncoder(nn.Module):
         selfattn_output = self.multiatt(click_embed, mask1, click_embed, click_embed) # batch_size, his_size, num_heads*head_size+2*categ_embed_size
         selfattn_output = self.dropout2(selfattn_output)
 
-        if not (self.add_op or self.mean_op or self.max_op or self.atten_op or self.dnn or self.moe or self.mvke or self.ua_dnn):
+        if not (self.add_op or self.mean_op or self.max_op or self.atten_op or self.dnn or self.score_add or self.moe or self.mvke or self.ua_dnn):
             if target is not None:
                 if self.cross_atten:
                     _, ta_w = self.target_att(selfattn_output, mask1, target, selfattn_output, no_multi_head=True, return_w=True)
-                    # attention = self.dense1(selfattn_output) # batch_size, his_size, medialayer
-                    # attention = self.dense2(attention) # batch_size, his_size, 1
-                    # mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
-                    # attention += mask2
-                    # sa_w = F.softmax(attention, 1)
-                    # mid_output = sa_w * selfattn_output
-
-
-                    output = torch.matmul(ta_w, selfattn_output)
+                    attention = self.dense1(selfattn_output) # batch_size, his_size, medialayer
+                    attention = self.dense2(attention) # batch_size, his_size, 1
+                    mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
+                    attention += mask2
+                    sa_w = F.softmax(attention, 1)
+                    mid_output = sa_w * selfattn_output
+                    output = torch.matmul(ta_w, mid_output)
                 else:
                     output = self.target_att(selfattn_output, mask1, target, selfattn_output)
             else:
@@ -238,11 +240,12 @@ class nrms(nn.Module):
         self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
         self.din = args.din # target attention
         self.cross_atten = args.cross_atten
-
+        self.score_add = args.score_add
         self.add_op = args.add_op
         self.mean_op = args.mean_op
         self.max_op = args.max_op
         self.atten_op = args.atten_op
+        
         if self.atten_op:
             self.atten_op_dense1 = nn.Linear(self.newssize, args.medialayer)
             self.atten_op_dense2 = nn.Linear(args.medialayer, 1)
@@ -266,8 +269,9 @@ class nrms(nn.Module):
                 expert_net_1 = nn.Linear(self.newssize*2, args.medialayer).to(self.device)
                 expert_net_2 = nn.Linear(args.medialayer, self.newssize).to(self.device)
                 self.expert_nets.append([expert_net_1, expert_net_2])
-            self.gate_net_1 = nn.Linear(self.newssize*2, args.medialayer)
+            self.gate_net_1 = nn.Linear(self.newssize, args.medialayer)
             self.gate_net_2 = nn.Linear(args.medialayer, args.num_experts)
+            self.user_layer = Userlayer(log_users, args)
             if self.bias:
                 self.bias_dense_1 = nn.Linear(self.newssize*2, args.medialayer)
                 self.bias_dense_2 = nn.Linear(args.medialayer, self.newssize)
@@ -300,6 +304,16 @@ class nrms(nn.Module):
             user_final_embed = user_target_embed+user_self_embed
             score = torch.matmul(news_embed, user_final_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
             score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1)) # batch_size, negnums+1
+        elif self.score_add:
+            user_target_embed, user_self_embed = user_embed
+            b_size, l_size, e_size = user_self_embed.size(0), user_target_embed.size(1), user_self_embed.size(1)
+            user_self_embed = torch.unsqueeze(user_self_embed, 1).expand(b_size, l_size, e_size)
+            
+            score_sa = torch.matmul(news_embed, user_self_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
+            score_sa = torch.squeeze(torch.diagonal(score_sa, dim1=-2, dim2=-1)) # batch_size, negnums+1
+            score_ta = torch.matmul(news_embed, user_self_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
+            score_ta = torch.squeeze(torch.diagonal(score_ta, dim1=-2, dim2=-1)) # batch_size, negnums+1
+            score = score_sa+score_ta
         elif self.mean_op:
             user_target_embed, user_self_embed = user_embed
             b_size, l_size, e_size = user_self_embed.size(0), user_target_embed.size(1), user_self_embed.size(1)
@@ -363,11 +377,12 @@ class nrms(nn.Module):
                 user_hidden = self.expert_nets[n][0](user_concat_embed)
                 user_outs.append(self.expert_nets[n][1](user_hidden))
 
-            gate_hidden = self.gate_net_1(user_concat_embed)
+            user_id_embed = self.user_layer(use_id)
+            gate_hidden = self.gate_net_1(user_id_embed)
             gate_out = self.gate_net_2(gate_hidden)
             gate_out = torch.softmax(gate_out, dim=-1)
 
-            user_final_embed = torch.sum(torch.unsqueeze(gate_out, -1)*torch.stack(user_outs, dim=2), dim=2)
+            user_final_embed = torch.sum(torch.unsqueeze(torch.unsqueeze(gate_out, -1), 1)*torch.stack(user_outs, dim=2), dim=2)
             if self.bias:
                 hidden_dnn = self.bias_dense_1(user_concat_embed)
                 user_final_embed_bias = self.bias_dense_2(hidden_dnn)

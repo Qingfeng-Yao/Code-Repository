@@ -34,6 +34,8 @@ def parse_args():
     parser.add_argument('--use_multi_gpu', help='whether to use multi gpus', action="store_true")
     parser.add_argument('--modelname', type=str, default='nrms')
     parser.add_argument('--din', help='whether to use target attention in user encoding', action="store_true")
+    parser.add_argument('--score_add', help='whether to add self-atten-based score and target-atten-based score', action="store_true")
+
     parser.add_argument('--cross_atten', help='whether to co-use self-atten and target attention in user attention', action="store_true")
     parser.add_argument('--add_op', help='whether to add self-atten and target-atten embeds to get user encoding', action="store_true")
     parser.add_argument('--mean_op', help='whether to average self-atten and target-atten embeds to get user encoding', action="store_true")
@@ -48,8 +50,8 @@ def parse_args():
     parser.add_argument('--mvke', help='whether to use mixture of virtual kernel experts to get final user representation', action="store_true")
     parser.add_argument('--dataset', help='path to file: MIND | heybox', type=str, default='MIND')
 
-    parser.add_argument('--word_embed_size', help='word embedding size', type=int, default=300) # if use bert, emb_size=768
-    parser.add_argument('--use_pretrained_embeddings', help='whether to use pretrained embeddings', action="store_true")
+    parser.add_argument('--word_embed_size', help='word embedding size, if use bert, emb_size=768', type=int, default=300) 
+    parser.add_argument('--pretrained_embeddings', help='which pretrained embeddings to use: glove | bert, none is not use', type=str, default='none')
 
     parser.add_argument('--categ_embed_size', help='category embedding size', type=int, default=16) # make news_size(num_heads*head_size+categ_embed_size*2) can divide by num_heads
     parser.add_argument('--epochs', help='max epoch', type=int, default=10)
@@ -91,7 +93,7 @@ class HeyDataset():
         self.his_size = args.his_size
         self.batch_size = args.batch_size
         self.eval_batch_size = args.eval_batch_size
-        self.use_pretrained_embeddings = args.use_pretrained_embeddings
+        self.pretrained_embeddings = args.pretrained_embeddings
 
         train_user_path = 'data/heybox/train/behaviors_train.tsv'
         test_user_path = 'data/heybox/test/behaviors_test.tsv'
@@ -114,8 +116,8 @@ class HeyDataset():
             num_line += 1
             linesplit = line.split('\t')
             assert len(linesplit)==5, '{}'.format(linesplit)
-            if self.use_pretrained_embeddings:
-                self.encoder = MyBertTokenizer.from_pretrained('data/bert_cache', cache_dir='data/bert_cache')
+            if self.pretrained_embeddings == 'bert':
+                self.encoder = MyBertTokenizer.from_pretrained('data/ch_bert_cache', cache_dir='data/ch_bert_cache')
                 self.news[linesplit[0]] = (linesplit[1], linesplit[2].strip(), self.encoder.encode(linesplit[3].lower()))
             else:
                 self.news[linesplit[0]] = (linesplit[1], linesplit[2].strip(), cutWord(linesplit[3].lower(), readStopwords('data/heybox/stopwords.txt')))
@@ -144,13 +146,13 @@ class HeyDataset():
             for w in features[2]:
                 if w not in self.word_dict:
                     self.word_dict[w] = len(self.word_dict)
-                if self.use_pretrained_embeddings:
+                if self.pretrained_embeddings == 'bert':
                     title.append(w)
                 else:
                     title.append(self.word_dict[w])
             self.words += len(title)
             title = title[:self.title_size]
-            if self.use_pretrained_embeddings:
+            if self.pretrained_embeddings == 'bert':
                 title = title + [self.encoder.stoi['[PAD]']] * (self.title_size - len(title))
             else:
                 title = title + [0] * (self.title_size - len(title))
@@ -280,6 +282,7 @@ class MINDDataset():
         self.his_size = args.his_size
         self.batch_size = args.batch_size
         self.eval_batch_size = args.eval_batch_size
+        self.pretrained_embeddings = args.pretrained_embeddings
         train_path = 'data/MIND/MINDsmall_train'
         test_path = 'data/MIND/MINDsmall_test'
 
@@ -302,11 +305,19 @@ class MINDDataset():
         self.news = {}
         for line in trainnewsfile:
             linesplit = line.split('\t')
-            self.news[linesplit[0]] = (linesplit[1].strip(), linesplit[2].strip(), word_tokenize(linesplit[3].lower()))
+            if self.pretrained_embeddings == 'bert':
+                self.encoder = MyBertTokenizer.from_pretrained('data/en_bert_cache', cache_dir='data/en_bert_cache')
+                self.news[linesplit[0]] = (linesplit[1].strip(), linesplit[2].strip(), self.encoder.encode(linesplit[3].lower()))
+            else:
+                self.news[linesplit[0]] = (linesplit[1].strip(), linesplit[2].strip(), word_tokenize(linesplit[3].lower()))
 
         for line in testnewsfile:
             linesplit = line.split('\t')
-            self.news[linesplit[0]] = (linesplit[1].strip(), linesplit[2].strip(), word_tokenize(linesplit[3].lower()))
+            if self.pretrained_embeddings == 'bert':
+                self.encoder = MyBertTokenizer.from_pretrained('data/en_bert_cache', cache_dir='data/en_bert_cache')
+                self.news[linesplit[0]] = (linesplit[1].strip(), linesplit[2].strip(), self.encoder.encode(linesplit[3].lower()))
+            else:
+                self.news[linesplit[0]] = (linesplit[1].strip(), linesplit[2].strip(), word_tokenize(linesplit[3].lower()))
 
         self.newsidenx = {'NULL': 0}
         nid = 1
@@ -328,10 +339,18 @@ class MINDDataset():
             for w in features[2]:
                 if w not in self.word_dict:
                     self.word_dict[w] = len(self.word_dict)
-                title.append(self.word_dict[w])
+
+                if self.pretrained_embeddings == 'bert':
+                    title.append(w)
+                else:
+                    title.append(self.word_dict[w])
+                
             self.words += len(title)
             title = title[:self.title_size]
-            title = title + [0] * (self.title_size - len(title))
+            if self.pretrained_embeddings == 'bert':
+                title = title + [self.encoder.stoi['[PAD]']] * (self.title_size - len(title))
+            else:
+                title = title + [0] * (self.title_size - len(title))
             title.append(self.categ_dict[features[0]])
             title.append(self.categ_dict[features[1]])
             self.news_features.append(title)

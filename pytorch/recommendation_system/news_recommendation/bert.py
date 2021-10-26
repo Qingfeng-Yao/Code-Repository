@@ -6,7 +6,7 @@ from pytorch_pretrained_bert.modeling import BertModel
 class BERT(nn.Module):
     """Class for loading pretrained BERT model."""
 
-    def __init__(self, update_embedding=False, embedding_reduction='none', pretrained_model_name='data/bert_cache', cache_dir='data/bert_cache'):
+    def __init__(self, update_embedding=False, embedding_reduction='none', pretrained_model_name=None, cache_dir=None):
         super().__init__()
 
         # Load pre-trained BERT model

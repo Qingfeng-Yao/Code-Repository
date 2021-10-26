@@ -20,7 +20,7 @@ if args.dataset == 'MIND':
 elif args.dataset == 'heybox':
 	data = HeyDataset(args)
 
-if args.use_pretrained_embeddings and args.dataset == 'MIND':
+if args.pretrained_embeddings == 'glove':
 	preemb = GloVe(name='840B', cache="data/word_vectors_cache")
 else:
 	preemb = None
