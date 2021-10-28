@@ -10,6 +10,7 @@ import torch.nn.functional as F
 
 from utils import mrr_score, ndcg_score
 from bert import BERT
+from mimn import MIMNCell
 
 class MultiHeadAttention(nn.Module):
     def __init__(self, num_heads, head_size, inputsize):
@@ -164,6 +165,7 @@ class UserEncoder(nn.Module):
         self.newscncoder = newscncoder
         self.his_size = args.his_size
         self.device = torch.device(args.gpu if torch.cuda.is_available() else 'cpu')
+
         self.add_op = args.add_op
         self.mean_op = args.mean_op
         self.max_op = args.max_op
@@ -173,11 +175,28 @@ class UserEncoder(nn.Module):
         self.ua_dnn = args.ua_dnn
         self.moe = args.moe
         self.mvke = args.mvke
-
         self.cross_atten = args.cross_atten
 
+        self.mimn_flag = args.mimn
+        self.batch_size_ = args.batch_size
+        self.max_len = args.max_len
+        self.mask_flag = args.mask_flag
+        self.util_reg = args.util_reg
+        if self.mimn_flag: # memory_vector_dim=newssize
+            self.mimn_net = MIMNCell(args.gpu, args.controller_units, args.memory_size, self.newssize, args.read_head_num, args.write_head_num, self.newssize,
+                 output_dim=None, clip_value=20, shift_range=1, batch_size=args.batch_size, mem_induction=args.mem_induction, util_reg=args.util_reg, sharp_value=2.)
 
-    def forward(self, user_click, seq_len, target=None):
+    # for mimn net
+    def clear_mask_state(self, state, begin_state, mask, t, batch_size_):
+        state["controller_state"] = (1-torch.reshape(mask[:,t], (batch_size_, 1))) * begin_state["controller_state"] + torch.reshape(mask[:,t], (batch_size_, 1)) * state["controller_state"]
+        state["M"] = (1-torch.reshape(mask[:,t], (batch_size_, 1, 1))) * begin_state["M"] + torch.reshape(mask[:,t], (batch_size_, 1, 1)) * state["M"]
+        state["key_M"] = (1-torch.reshape(mask[:,t], (batch_size_, 1, 1))) * begin_state["key_M"] + torch.reshape(mask[:,t], (batch_size_, 1, 1)) * state["key_M"]
+        state["sum_aggre"] = (1-torch.reshape(mask[:,t], (batch_size_, 1, 1))) * begin_state["sum_aggre"] + torch.reshape(mask[:,t], (batch_size_, 1, 1)) * state["sum_aggre"]
+
+        return state
+
+
+    def forward(self, user_click, seq_len, target=None, train_test_flag=0):
         # batch_size, his_size, title_size+2; batch_size, ; batch_size, negnums+1, num_heads*head_size+2*categ_embed_size
         reshape_user_click = user_click.view(-1, user_click.size(-1))
         reshape_click_embed = self.newscncoder(reshape_user_click) # batch_size*his_size, num_heads*head_size+2*categ_embed_size
@@ -186,43 +205,75 @@ class UserEncoder(nn.Module):
 
         mask = torch.arange(0, self.his_size).to(self.device).unsqueeze(0).expand(user_click.size(0), self.his_size).lt(
             seq_len.unsqueeze(1)).float() # batch_size, his_size
-        mask = mask.masked_fill(mask == 0, -1e9)
-        mask1 = torch.unsqueeze(torch.unsqueeze(mask, 1), 1) # batch_size, 1, 1, his_size
+        
 
-        selfattn_output = self.multiatt(click_embed, mask1, click_embed, click_embed) # batch_size, his_size, num_heads*head_size+2*categ_embed_size
-        selfattn_output = self.dropout2(selfattn_output)
+        if self.mimn_flag:
+            if train_test_flag == 0:
+                bz = self.batch_size_
+                state = self.mimn_net.zero_state(bz)
+            elif train_test_flag == 1:
+                bz = 1
+                state = self.mimn_net.zero_state(bz)
+            begin_state = state
+            self.state_list = [state]
 
-        if not (self.add_op or self.mean_op or self.max_op or self.atten_op or self.dnn or self.score_add or self.moe or self.mvke or self.ua_dnn):
-            if target is not None:
-                if self.cross_atten:
-                    _, ta_w = self.target_att(selfattn_output, mask1, target, selfattn_output, no_multi_head=True, return_w=True)
+            # self.mimn_o = []
+            for t in range(self.max_len):
+                state = self.mimn_net(click_embed[:, t, :], state)
+                if self.mask_flag:
+                    state = self.clear_mask_state(state, begin_state, mask, t, bz)
+                # self.mimn_o.append(output)
+                self.state_list.append(state)
+
+            # self.mimn_o = torch.stack(self.mimn_o, dim=1)
+            self.state_list.append(state)
+            mean_memory = torch.mean(state['sum_aggre'], dim=-2)
+
+            before_aggre = state['w_aggre']
+            M = state['M']
+            # user_embed = torch.mean(M, 1)
+            if self.util_reg:
+                reg_loss = self.mimn_net.capacity_loss(before_aggre)
+                output = [M, reg_loss]
+            output = [M]
+        else:
+            mask = mask.masked_fill(mask == 0, -1e9)
+            mask1 = torch.unsqueeze(torch.unsqueeze(mask, 1), 1) # batch_size, 1, 1, his_size
+
+            selfattn_output = self.multiatt(click_embed, mask1, click_embed, click_embed) # batch_size, his_size, num_heads*head_size+2*categ_embed_size
+            selfattn_output = self.dropout2(selfattn_output)
+
+            if not (self.add_op or self.mean_op or self.max_op or self.atten_op or self.dnn or self.score_add or self.moe or self.mvke or self.ua_dnn):
+                if target is not None:
+                    if self.cross_atten:
+                        _, ta_w = self.target_att(selfattn_output, mask1, target, selfattn_output, no_multi_head=True, return_w=True)
+                        attention = self.dense1(selfattn_output) # batch_size, his_size, medialayer
+                        attention = self.dense2(attention) # batch_size, his_size, 1
+                        mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
+                        attention += mask2
+                        sa_w = F.softmax(attention, 1)
+                        mid_output = sa_w * selfattn_output
+                        output = torch.matmul(ta_w, mid_output)
+                    else:
+                        output = self.target_att(selfattn_output, mask1, target, selfattn_output)
+                else:
                     attention = self.dense1(selfattn_output) # batch_size, his_size, medialayer
                     attention = self.dense2(attention) # batch_size, his_size, 1
                     mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
                     attention += mask2
-                    sa_w = F.softmax(attention, 1)
-                    mid_output = sa_w * selfattn_output
-                    output = torch.matmul(ta_w, mid_output)
-                else:
-                    output = self.target_att(selfattn_output, mask1, target, selfattn_output)
+                    attention_weight = F.softmax(attention, 1)
+                    output = torch.sum(attention_weight * selfattn_output, 1) # batch_size, num_heads*head_size+2*categ_embed_size
             else:
-                attention = self.dense1(selfattn_output) # batch_size, his_size, medialayer
-                attention = self.dense2(attention) # batch_size, his_size, 1
-                mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
+                output1 = self.target_att(selfattn_output, mask1, target, selfattn_output)
+
+                attention = self.dense1(selfattn_output)
+                attention = self.dense2(attention) 
+                mask2 = torch.unsqueeze(mask, 2)
                 attention += mask2
                 attention_weight = F.softmax(attention, 1)
-                output = torch.sum(attention_weight * selfattn_output, 1) # batch_size, num_heads*head_size+2*categ_embed_size
-        else:
-            output1 = self.target_att(selfattn_output, mask1, target, selfattn_output)
+                output2 = torch.sum(attention_weight * selfattn_output, 1)
 
-            attention = self.dense1(selfattn_output)
-            attention = self.dense2(attention) 
-            mask2 = torch.unsqueeze(mask, 2)
-            attention += mask2
-            attention_weight = F.softmax(attention, 1)
-            output2 = torch.sum(attention_weight * selfattn_output, 1)
-
-            output = (output1, output2)
+                output = (output1, output2)
 
 
         return output
@@ -245,7 +296,6 @@ class nrms(nn.Module):
         self.mean_op = args.mean_op
         self.max_op = args.max_op
         self.atten_op = args.atten_op
-        
         if self.atten_op:
             self.atten_op_dense1 = nn.Linear(self.newssize, args.medialayer)
             self.atten_op_dense2 = nn.Linear(args.medialayer, 1)
@@ -287,8 +337,11 @@ class nrms(nn.Module):
                 self.expert_nets.append([expert_net_1, expert_net_2])
             self.gate_net = MultiHeadAttention(args.num_heads, self.newssize // args.num_heads, self.newssize)
 
+        self.mimn_flag = args.mimn
+        self.util_reg = args.util_reg
 
-    def forward(self, candidate_news, clicked_news, click_len, use_id, labels=None):
+
+    def forward(self, candidate_news, clicked_news, click_len, use_id, labels=None, train_test_flag=0):
         reshape_candidate_news = candidate_news.view(-1, candidate_news.size(-1)) # batch_size*(negnums+1), title_size+2
         reshape_news_embed = self.newsencoder(reshape_candidate_news) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
         news_embed = reshape_news_embed.view(candidate_news.size(0), -1, reshape_news_embed.size(-1)) # batch_size, negnums+1, num_heads*head_size+2*categ_embed_size
@@ -296,8 +349,13 @@ class nrms(nn.Module):
             target = news_embed
         else:
             target = None
-        user_embed = self.userencoder(clicked_news, click_len, target) 
-        if self.add_op:
+        user_embed = self.userencoder(clicked_news, click_len, target, train_test_flag=train_test_flag) 
+        if self.mimn_flag:
+            M = user_embed[0]
+            user_final_embed = torch.mean(M, 1)
+            user_final_embed = torch.unsqueeze(user_final_embed, 2)
+            score = torch.squeeze(torch.matmul(news_embed, user_final_embed))
+        elif self.add_op:
             user_target_embed, user_self_embed = user_embed
             b_size, l_size, e_size = user_self_embed.size(0), user_target_embed.size(1), user_self_embed.size(1)
             user_self_embed = torch.unsqueeze(user_self_embed, 1).expand(b_size, l_size, e_size)
@@ -417,6 +475,8 @@ class nrms(nn.Module):
 
         if labels is not None:
             loss = self.criterion(score, labels)
+            if self.util_reg:
+                loss += user_embed[1]
             return loss
         else:
             score = torch.sigmoid(score) # num_impression,
@@ -438,7 +498,7 @@ class NRMS(nn.Module):
 
     def mtrain(self):
         args = self.args
-        batch_num = math.ceil(len(self.data.train_label)//args.batch_size)
+        batch_num = len(self.data.train_label)//args.batch_size
         args.max_steps = args.epochs * batch_num
 
         if (args.optimizer == 'Adamw'):
@@ -465,7 +525,7 @@ class NRMS(nn.Module):
                 news, user_click, click_len, use_id, labels = (torch.LongTensor(x).to(args.device) for x in batch)
                 del batch
                 optimizer.zero_grad()
-                loss = self.model(news, user_click, click_len, use_id, labels)
+                loss = self.model(news, user_click, click_len, use_id, labels, 0)
                 if args.use_multi_gpu and args.n_gpu > 1:
                     loss = loss.mean()
                 loss.backward()
@@ -507,7 +567,7 @@ class NRMS(nn.Module):
         for step, batch in eval_progress:
             news, user_click, click_len, use_id = (torch.LongTensor(x).to(args.device) for x in batch)
             with torch.no_grad():
-                click_probability = self.model(news, user_click, click_len, use_id)
+                click_probability = self.model(news, user_click, click_len, use_id, train_test_flag=1)
 
             predict.append(click_probability.cpu().numpy())
 

@@ -3,6 +3,7 @@ from nltk.tokenize import word_tokenize
 import random
 import numpy as np
 import jieba 
+import math
 
 from text_encoders import MyBertTokenizer
 
@@ -33,6 +34,7 @@ def parse_args():
     parser.add_argument('--gpu', help='set gpu device number 0-3', type=str, default='cuda:0')
     parser.add_argument('--use_multi_gpu', help='whether to use multi gpus', action="store_true")
     parser.add_argument('--modelname', type=str, default='nrms')
+
     parser.add_argument('--din', help='whether to use target attention in user encoding', action="store_true")
     parser.add_argument('--score_add', help='whether to add self-atten-based score and target-atten-based score', action="store_true")
 
@@ -53,12 +55,23 @@ def parse_args():
     parser.add_argument('--word_embed_size', help='word embedding size, if use bert, emb_size=768', type=int, default=300) 
     parser.add_argument('--pretrained_embeddings', help='which pretrained embeddings to use: glove | bert, none is not use', type=str, default='none')
 
+    parser.add_argument('--mimn', help='whether to use mimn to encode user', action="store_true")
+    parser.add_argument('--memory_size', type=int, default=5)
+    parser.add_argument('--max_len', type=int, default=50) # should <= his_size
+    parser.add_argument('--controller_units', type=int, default=50)
+    parser.add_argument('--memory_vector_dim', type=int, default=50) # memory_vector_dim=newssize
+    parser.add_argument('--read_head_num', type=int, default=1)
+    parser.add_argument('--write_head_num', type=int, default=1)
+    parser.add_argument('--util_reg', action="store_true")
+    parser.add_argument('--mem_induction', action="store_true")
+    parser.add_argument('--mask_flag', action="store_true")
+
     parser.add_argument('--categ_embed_size', help='category embedding size', type=int, default=16) # make news_size(num_heads*head_size+categ_embed_size*2) can divide by num_heads
     parser.add_argument('--epochs', help='max epoch', type=int, default=10)
     parser.add_argument('--neg_number', help='negative samples count', type=int, default=4)
     parser.add_argument('--lr', help='learning_rate', type=float, default=5e-5)
     parser.add_argument('--l2', help='l2 regularization', type=float, default=0.0001)
-    parser.add_argument('--batch_size', help='batch size', type=int, default=64)
+    parser.add_argument('--batch_size', help='batch size', type=int, default=64) # 不满一个batch的数据不考虑
     parser.add_argument('--eval_batch_size', help='eval batch size', type=int, default=1)
     parser.add_argument('--droprate', type=float, default=0.2)
     parser.add_argument('--num_heads', type=int, default=16)
@@ -255,7 +268,8 @@ class HeyDataset():
     def generate_batch_train_data(self):
         idlist = np.arange(len(self.train_label))
         np.random.shuffle(idlist)
-        batches = [idlist[range(self.batch_size*i, min(len(self.train_label),self.batch_size*(i+1)))] for i in range(len(self.train_label)//self.batch_size+1)]
+        batch_num = len(self.train_label)//self.batch_size
+        batches = [idlist[range(self.batch_size*i, min(len(self.train_label),self.batch_size*(i+1)))] for i in range(batch_num)]
         for i in batches:
             item = self.news_features[self.train_candidate[i]] # batch_size, negnums+1, title_size+2
             user = self.news_features[self.train_user_his[i]] # batch_size, his_size, title_size+2
@@ -454,7 +468,8 @@ class MINDDataset():
     def generate_batch_train_data(self):
         idlist = np.arange(len(self.train_label))
         np.random.shuffle(idlist)
-        batches = [idlist[range(self.batch_size*i, min(len(self.train_label),self.batch_size*(i+1)))] for i in range(len(self.train_label)//self.batch_size+1)]
+        batch_num = len(self.train_label)//self.batch_size
+        batches = [idlist[range(self.batch_size*i, min(len(self.train_label),self.batch_size*(i+1)))] for i in range(batch_num)]
         for i in batches:
             item = self.news_features[self.train_candidate[i]] # batch_size, negnums+1, title_size+2
             user = self.news_features[self.train_user_his[i]] # batch_size, his_size, title_size+2
