@@ -118,6 +118,17 @@ class Categorylayer(nn.Module):
         output = catedembed.view((-1, self.output_dim)) # batch_size*(negnums+1), 2*categ_embed_size
         return output
 
+class Ctrlayer(nn.Module):
+    def __init__(self, num_ctr_bin, args):
+        super(Ctrlayer, self).__init__()
+        self.output_dim = args.num_heads * args.head_size + args.categ_embed_size * 2
+        self.embedding = nn.Embedding(num_ctr_bin, self.output_dim)
+
+    def forward(self, inputs): # batch_size*(negnums+1), 1
+        catedembed = self.embedding(inputs) # batch_size*(negnums+1), 1, num_heads*head_size+2*categ_embed_size
+        output = catedembed.view((-1, self.output_dim)) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
+        return output
+
 class Userlayer(nn.Module):
     def __init__(self, users, args):
         super(Userlayer, self).__init__()
@@ -129,26 +140,31 @@ class Userlayer(nn.Module):
         return output
 
 class NewsEncoder(nn.Module):
-    def __init__(self, word_dict, preembed, categories, users, args):
+    def __init__(self, word_dict, preembed, categories, users, num_ctr_bin, args):
         super(NewsEncoder, self).__init__()
         self.titlelayer = TitleLayer(word_dict, preembed, args)
         self.categlayer = Categorylayer(categories, args)
+        self.ctrlayer = Ctrlayer(num_ctr_bin, args)
         if users is not None:
             self.userlayer = Categorylayer(users, args)
         else:
             self.userlayer = None
         self.title_size = args.title_size
 
-    def forward(self, inputs): # batch_size*(negnums+1), title_size+2
+    def forward(self, inputs, return_ctr=False): # batch_size*(negnums+1), title_size+3
         title_embed = self.titlelayer(inputs[:, :self.title_size]) # batch_size*(negnums+1), num_heads*head_size
         if self.userlayer is not None:
             user_embed = self.userlayer(inputs[:, self.title_size: self.title_size+1]) # batch_size*(negnums+1), categ_embed_size
-            categ_embed = self.categlayer(inputs[:, self.title_size+1:]) # batch_size*(negnums+1), categ_embed_size
+            categ_embed = self.categlayer(inputs[:, self.title_size+1:self.title_size+2]) # batch_size*(negnums+1), categ_embed_size
             news_embed = torch.cat((title_embed, user_embed, categ_embed), 1) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
         else:
-            categ_embed = self.categlayer(inputs[:, self.title_size:]) # batch_size*(negnums+1), 2*categ_embed_size
+            categ_embed = self.categlayer(inputs[:, self.title_size:self.title_size+2]) # batch_size*(negnums+1), 2*categ_embed_size
             news_embed = torch.cat((title_embed, categ_embed), 1) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
-        return news_embed
+        ctr_emb = self.ctrlayer(inputs[:, self.title_size+2:]) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
+        if return_ctr:
+            return news_embed, ctr_emb
+        else:
+            return news_embed
 
 class UserEncoder(nn.Module):
     def __init__(self, newscncoder, args):
@@ -196,12 +212,20 @@ class UserEncoder(nn.Module):
         return state
 
 
-    def forward(self, user_click, seq_len, target=None, train_test_flag=0):
+    def forward(self, user_click, seq_len, target=None, train_test_flag=0, use_ctr=False):
         # batch_size, his_size, title_size+2; batch_size, ; batch_size, negnums+1, num_heads*head_size+2*categ_embed_size
         reshape_user_click = user_click.view(-1, user_click.size(-1))
-        reshape_click_embed = self.newscncoder(reshape_user_click) # batch_size*his_size, num_heads*head_size+2*categ_embed_size
+        if use_ctr:
+            reshape_click_embed, reshape_click_ctr_embed = self.newscncoder(reshape_user_click, True) # batch_size*his_size, num_heads*head_size+2*categ_embed_size; batch_size*his_size, num_heads*head_size+2*categ_embed_size
+        else:
+            reshape_click_embed = self.newscncoder(reshape_user_click) # batch_size*his_size, num_heads*head_size+2*categ_embed_size
         click_embed = reshape_click_embed.view(user_click.size(0), -1, reshape_click_embed.size(-1)) # batch_size, his_size, num_heads*head_size+2*categ_embed_size
         click_embed = self.dropout1(click_embed)
+
+        if use_ctr:
+            click_ctr_embed = reshape_click_ctr_embed.view(user_click.size(0), -1, reshape_click_ctr_embed.size(-1)) # batch_size, his_size, num_heads*head_size+2*categ_embed_size
+            click_ctr_embed = self.dropout1(click_ctr_embed)
+
 
         mask = torch.arange(0, self.his_size).to(self.device).unsqueeze(0).expand(user_click.size(0), self.his_size).lt(
             seq_len.unsqueeze(1)).float() # batch_size, his_size
@@ -246,7 +270,7 @@ class UserEncoder(nn.Module):
             if not (self.add_op or self.mean_op or self.max_op or self.atten_op or self.dnn or self.score_add or self.moe or self.mvke or self.ua_dnn):
                 if target is not None:
                     if self.cross_atten:
-                        _, ta_w = self.target_att(selfattn_output, mask1, target, selfattn_output, no_multi_head=True, return_w=True)
+                        _, ta_w = self.target_att(click_embed, mask1, target, click_embed, no_multi_head=True, return_w=True)
                         attention = self.dense1(selfattn_output) # batch_size, his_size, medialayer
                         attention = self.dense2(attention) # batch_size, his_size, 1
                         mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
@@ -255,7 +279,10 @@ class UserEncoder(nn.Module):
                         mid_output = sa_w * selfattn_output
                         output = torch.matmul(ta_w, mid_output)
                     else:
-                        output = self.target_att(selfattn_output, mask1, target, selfattn_output)
+                        output = self.target_att(click_embed, mask1, target, click_embed)
+                elif use_ctr:
+                    output = self.target_att(click_embed, mask1, click_ctr_embed, click_embed)
+                    output = torch.sum(output, 1) # batch_size, num_heads*head_size+2*categ_embed_size
                 else:
                     attention = self.dense1(selfattn_output) # batch_size, his_size, medialayer
                     attention = self.dense2(attention) # batch_size, his_size, 1
@@ -264,7 +291,7 @@ class UserEncoder(nn.Module):
                     attention_weight = F.softmax(attention, 1)
                     output = torch.sum(attention_weight * selfattn_output, 1) # batch_size, num_heads*head_size+2*categ_embed_size
             else:
-                output1 = self.target_att(selfattn_output, mask1, target, selfattn_output)
+                output1 = self.target_att(click_embed, mask1, target, click_embed)
 
                 attention = self.dense1(selfattn_output)
                 attention = self.dense2(attention) 
@@ -279,19 +306,36 @@ class UserEncoder(nn.Module):
         return output
 
 class nrms(nn.Module):
-    def __init__(self, word_dict, preembed, categories, users, log_users, args):
+    def __init__(self, word_dict, preembed, categories, users, log_users, num_ctr_bin, args):
         super(nrms, self).__init__()
         # make news and user's embedding dim the same
         # training sample and testing sample have different constructions: negnums+1, 1
         # consider two user representations: self attention and target attention
-        self.newsencoder = NewsEncoder(word_dict, preembed, categories, users, args)
+        self.newsencoder = NewsEncoder(word_dict, preembed, categories, users, num_ctr_bin, args)
         self.userencoder = UserEncoder(self.newsencoder, args)
         self.criterion = nn.CrossEntropyLoss()
         self.device = torch.device(args.gpu if torch.cuda.is_available() else 'cpu')
         self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
+        self.use_ctr = args.use_ctr
+        if self.use_ctr:
+            self.user_ctr_layer = Userlayer(log_users, args)
+            self.user_ctr_dense = nn.Linear(self.newssize, 1)
+
         self.din = args.din # target attention
         self.cross_atten = args.cross_atten
         self.score_add = args.score_add
+        self.user_gate = args.user_gate
+        if self.user_gate:
+            self.user_layer = Userlayer(log_users, args)
+            self.user_dense = nn.Linear(self.newssize, 1)
+        self.emb_gate = args.emb_gate
+        if self.emb_gate:
+            self.emb_dense = nn.Linear(self.newssize*2, 1)
+        self.param_gate = args.param_gate
+        if self.param_gate:
+            self.param_sa = nn.Parameter(torch.ones(1))
+            self.param_ta = nn.Parameter(torch.ones(1))
+
         self.add_op = args.add_op
         self.mean_op = args.mean_op
         self.max_op = args.max_op
@@ -341,15 +385,16 @@ class nrms(nn.Module):
         self.util_reg = args.util_reg
 
 
-    def forward(self, candidate_news, clicked_news, click_len, use_id, labels=None, train_test_flag=0):
-        reshape_candidate_news = candidate_news.view(-1, candidate_news.size(-1)) # batch_size*(negnums+1), title_size+2
+    def forward(self, candidate_news, candidate_news_ctr, clicked_news, click_len, use_id, labels=None, train_test_flag=0):
+        reshape_candidate_news = candidate_news.view(-1, candidate_news.size(-1)) # batch_size*(negnums+1), title_size+3
         reshape_news_embed = self.newsencoder(reshape_candidate_news) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
         news_embed = reshape_news_embed.view(candidate_news.size(0), -1, reshape_news_embed.size(-1)) # batch_size, negnums+1, num_heads*head_size+2*categ_embed_size
+        
         if self.din or self.cross_atten:
             target = news_embed
         else:
             target = None
-        user_embed = self.userencoder(clicked_news, click_len, target, train_test_flag=train_test_flag) 
+        user_embed = self.userencoder(clicked_news, click_len, target, train_test_flag=train_test_flag, use_ctr=self.use_ctr) 
         if self.mimn_flag:
             M = user_embed[0]
             user_final_embed = torch.mean(M, 1)
@@ -371,7 +416,18 @@ class nrms(nn.Module):
             score_sa = torch.squeeze(torch.diagonal(score_sa, dim1=-2, dim2=-1)) # batch_size, negnums+1
             score_ta = torch.matmul(news_embed, user_self_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
             score_ta = torch.squeeze(torch.diagonal(score_ta, dim1=-2, dim2=-1)) # batch_size, negnums+1
-            score = score_sa+score_ta
+            if self.user_gate:
+                user_id_embed = self.user_layer(use_id)
+                eta = torch.squeeze(torch.sigmoid(self.user_dense(user_id_embed)), 0)
+                score = (1-eta)*score_sa+eta*score_ta
+            elif self.emb_gate:
+                emb_out = self.emb_dense(torch.cat([user_target_embed, user_self_embed], dim=2))
+                eta = torch.squeeze(torch.sigmoid(emb_out))
+                score = (1-eta)*score_sa+eta*score_ta
+            elif self.param_gate:
+                score = self.param_sa*score_sa+self.param_ta*score_ta
+            else:
+                score = score_sa+score_ta
         elif self.mean_op:
             user_target_embed, user_self_embed = user_embed
             b_size, l_size, e_size = user_self_embed.size(0), user_target_embed.size(1), user_self_embed.size(1)
@@ -469,8 +525,18 @@ class nrms(nn.Module):
                 score = torch.matmul(news_embed, user_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
                 score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1)) # batch_size, negnums+1
             else:
-                user_embed = torch.unsqueeze(user_embed, 2) # batch_size, num_heads*head_size+2*categ_embed_size, 1
-                score = torch.squeeze(torch.matmul(news_embed, user_embed)) # batch_size, negnums+1
+                if self.use_ctr:
+                    user_embed = torch.unsqueeze(user_embed, 2) # batch_size, num_heads*head_size+2*categ_embed_size, 1
+                    score_match = torch.squeeze(torch.matmul(news_embed, user_embed)) # batch_size, negnums+1
+                    candidate_news_ctr = torch.squeeze(candidate_news_ctr)
+                    
+                    user_id_embed = self.user_ctr_layer(use_id)
+                    eta = torch.squeeze(torch.sigmoid(self.user_ctr_dense(user_id_embed)), 0)
+                    score = (1-eta)*score_match+eta*candidate_news_ctr
+
+                else:
+                    user_embed = torch.unsqueeze(user_embed, 2) # batch_size, num_heads*head_size+2*categ_embed_size, 1
+                    score = torch.squeeze(torch.matmul(news_embed, user_embed)) # batch_size, negnums+1
         
 
         if labels is not None:
@@ -491,7 +557,8 @@ class NRMS(nn.Module):
         else:
             userinfo = None
         log_user_info = len(data.users)
-        self.model = nrms(data.word_dict, preembed, len(data.categ_dict), userinfo, log_user_info, args).to(args.device)
+        num_ctr_bin = 11
+        self.model = nrms(data.word_dict, preembed, len(data.categ_dict), userinfo, log_user_info, num_ctr_bin, args).to(args.device)
         self.args = args
         self.logger = logger
         self.data = data
@@ -522,10 +589,10 @@ class NRMS(nn.Module):
             train_progress = tqdm(enumerate(self.data.generate_batch_train_data()), dynamic_ncols=True,
                                   total=batch_num)
             for step, batch in train_progress:
-                news, user_click, click_len, use_id, labels = (torch.LongTensor(x).to(args.device) for x in batch)
+                news, news_ctr, user_click, click_len, use_id, labels = (torch.LongTensor(x).to(args.device) for x in batch)
                 del batch
                 optimizer.zero_grad()
-                loss = self.model(news, user_click, click_len, use_id, labels, 0)
+                loss = self.model(news, news_ctr, user_click, click_len, use_id, labels, 0)
                 if args.use_multi_gpu and args.n_gpu > 1:
                     loss = loss.mean()
                 loss.backward()
@@ -565,9 +632,9 @@ class NRMS(nn.Module):
         eval_progress = tqdm(enumerate(self.data.generate_batch_eval_data()), dynamic_ncols=True,
                              total=(len(self.data.eval_label) // args.eval_batch_size))
         for step, batch in eval_progress:
-            news, user_click, click_len, use_id = (torch.LongTensor(x).to(args.device) for x in batch)
+            news, news_ctr, user_click, click_len, use_id = (torch.LongTensor(x).to(args.device) for x in batch)
             with torch.no_grad():
-                click_probability = self.model(news, user_click, click_len, use_id, train_test_flag=1)
+                click_probability = self.model(news, news_ctr, user_click, click_len, use_id, train_test_flag=1)
 
             predict.append(click_probability.cpu().numpy())
 

@@ -34,11 +34,12 @@
         - (+mean)
         - (+max)
         - (+atten)
-        - `+dnn`
+        - (+dnn)
         - (+ua_dnn)
         - (+moe)
         - (+bias)
         - (+mvke)
+    - (+ctr)
     - (+mimn)
 - 指标
     - AUC
@@ -47,24 +48,31 @@
 - 相关执行命令
     - `MIND`:
         - `NRMS`: python3 main.py --pretrained_embeddings glove; `auc: 65.57, mrr: 30.79, ndcg5: 33.88, ndcg10: 40.28`
-        - `NRMS+bert`: python3 main.py --word_embed_size 768 --pretrained_embeddings bert --batch_size 4;
-        - `NRMS+din`: python3 main.py --pretrained_embeddings glove --din; `auc: 66.16, mrr: 31.49, ndcg5: 34.59, ndcg10: 40.89`
-        - `NRMS+score_add`: python3 main.py --pretrained_embeddings glove --din --score_add; `auc: 65.61, mrr: 30.86, ndcg5: 33.92, ndcg10: 40.34`
-        - `NRMS+cross_atten`: python3 main.py --pretrained_embeddings glove --cross_atten; auc: 65.88, mrr: 30.89, ndcg5: 33.99, ndcg10: 40.41
-        - `NRMS+add`: python3 main.py --pretrained_embeddings glove --din --add_op; auc: 65.55, mrr: 30.88, ndcg5: 33.89, ndcg10: 40.29
-        - `NRMS+mean`: python3 main.py --pretrained_embeddings glove --din --mean_op; auc: 65.90, mrr: 31.06, ndcg5: 34.37, ndcg10: 40.66
-        - `NRMS+max`: python3 main.py --pretrained_embeddings glove --din --max_op; `auc: 66.69, mrr: 31.95, ndcg5: 35.31, ndcg10: 41.53`
-        - `NRMS+atten`: python3 main.py --pretrained_embeddings glove --din --atten_op; auc: 66.01, mrr: 31.15, ndcg5: 34.19, ndcg10: 40.59
-        - `NRMS+dnn`: python3 main.py --pretrained_embeddings glove --din --dnn; `auc: 65.88, mrr: 31.15, ndcg5: 34.33, ndcg10: 40.66`
-        - `NRMS+ua_dnn`: python3 main.py --pretrained_embeddings glove --din --ua_dnn; auc: 66.04, mrr: 31.38, ndcg5: 34.41, ndcg10: 40.78
-        - `NRMS+moe`: python3 main.py --pretrained_embeddings glove --din --moe; auc: 66.12, mrr: 31.43, ndcg5: 34.64, ndcg10: 40.88
-        - `NRMS+bias`: python3 main.py --pretrained_embeddings glove --din --moe --bias; auc: 65.88, mrr: 31.22, ndcg5: 34.41, ndcg10: 40.74
-        - `NRMS+mvke`: python3 main.py --pretrained_embeddings glove --din --mvke; auc: 66.45, mrr: 31.29, ndcg5: 34.62, ndcg10: 40.92
-        - `NRMS+mimn`: python3 main.py --pretrained_embeddings glove --mimn; 
+        - NRMS+bert: python3 main.py --word_embed_size 768 --pretrained_embeddings bert --batch_size 4;
+        - `NRMS+din`: python3 main.py --pretrained_embeddings glove --din; `auc: 66.96, mrr: 31.84, ndcg5: 35.11, ndcg10: 41.38`
+        - `NRMS+ctr`: python3 main.py --pretrained_embeddings glove --use_ctr; `auc: 63.86, mrr: 29.65, ndcg5: 32.38, ndcg10: 38.88`
+        - NRMS+score_add: python3 main.py --pretrained_embeddings glove --din --score_add; auc: 65.93, mrr: 31.20, ndcg5: 34.49, ndcg10: 40.77
+        - NRMS+score_add+user_gate: python3 main.py --pretrained_embeddings glove --din --score_add --user_gate; auc: 66.30, mrr: 31.38, ndcg5: 34.57, ndcg10: 40.88
+        - NRMS+score_add+emb_gate: python3 main.py --pretrained_embeddings glove --din --score_add --emb_gate; auc: 66.09, mrr: 31.05, ndcg5: 34.05, ndcg10: 40.55
+        - NRMS+score_add+param_gate: python3 main.py --pretrained_embeddings glove --din --score_add --param_gate; auc: 65.86, mrr: 30.74, ndcg5: 33.77, ndcg10: 40.31
+        - NRMS+cross_atten: python3 main.py --pretrained_embeddings glove --cross_atten; auc: 66.11, mrr: 31.38, ndcg5: 34.45, ndcg10: 40.83
+        - NRMS+add: python3 main.py --pretrained_embeddings glove --din --add_op; auc: 66.34, mrr: 31.58, ndcg5: 34.81, ndcg10: 41.12
+        - NRMS+mean: python3 main.py --pretrained_embeddings glove --din --mean_op; auc: 66.70, mrr: 31.79, ndcg5: 34.99, ndcg10: 41.34
+        - NRMS+max: python3 main.py --pretrained_embeddings glove --din --max_op; auc: 66.83, mrr: 31.84, ndcg5: 35.11, ndcg10: 41.37
+        - NRMS+atten: python3 main.py --pretrained_embeddings glove --din --atten_op; auc: 65.90, mrr: 31.15, ndcg5: 34.36, ndcg10: 40.68
+        - NRMS+dnn: python3 main.py --pretrained_embeddings glove --din --dnn; auc: 65.91, mrr: 31.08, ndcg5: 34.15, ndcg10: 40.61
+        - NRMS+ua_dnn: python3 main.py --pretrained_embeddings glove --din --ua_dnn; auc: 65.34, mrr: 30.90, ndcg5: 33.99, ndcg10: 40.34
+        - NRMS+moe: python3 main.py --pretrained_embeddings glove --din --moe; auc: 66.32, mrr: 31.26, ndcg5: 34.30, ndcg10: 40.78
+        - NRMS+bias: python3 main.py --pretrained_embeddings glove --din --moe --bias; auc: 66.61, mrr: 31.90, ndcg5: 35.04, ndcg10: 41.32
+        - NRMS+mvke: python3 main.py --pretrained_embeddings glove --din --mvke; auc: 66.28, mrr: 31.50, ndcg5: 34.70, ndcg10: 40.97
+        - `NRMS+mimn`: python3 main.py --pretrained_embeddings glove --mimn; `auc: 65.24, mrr: 30.71, ndcg5: 33.79, ndcg10: 40.14`
     - `heybox`:
-        - `NRMS`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-5 --epochs 3; `auc: 66.59, mrr: 47.10, ndcg5: 53.17, ndcg10: 59.72`
-        - `NRMS+bert`: python3 main.py --dataset heybox --word_embed_size 768 --pretrained_embeddings bert --title_size 10 --his_size 50 --neg_number 10 --batch_size 4 --lr 5e-5 --epochs 3;
-        - `NRMS+dnn`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-5 --epochs 3 --din --dnn;
+        - `NRMS`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-5 --epochs 5; `auc: 65.66, mrr: 46.05, ndcg5: 52.05, ndcg10: 58.90`
+        - NRMS+bert: python3 main.py --dataset heybox --word_embed_size 768 --pretrained_embeddings bert --title_size 10 --his_size 50 --neg_number 10 --batch_size 4 --lr 5e-5 --epochs 5;
+        - `NRMS+din`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-5 --epochs 5 --din; `auc: 66.19, mrr: 46.77, ndcg5: 52.71, ndcg10: 59.45`
+        - `NRMS+ctr`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-5 --epochs 5 --use_ctr; `auc: 65.11, mrr: 46.07, ndcg5: 51.77, ndcg10: 58.89`
+        - `NRMS+mimn`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-5 --epochs 5 --mimn;
+        
 
 - 参考论文
     - 2019 | EMNLP | Neural News Recommendation with Multi-Head Self-Attention | Microsoft
