@@ -35,21 +35,22 @@ def parse_args():
     parser.add_argument('--use_multi_gpu', help='whether to use multi gpus', action="store_true")
     parser.add_argument('--modelname', type=str, default='nrms')
 
-    parser.add_argument('--use_ctr', help='whether to use item ctr to make predictions', action="store_true")
+    parser.add_argument('--seed', help='set random seed', type=int, default=1)
 
+    parser.add_argument('--use_ctr', help='whether to use item ctr to get user representation', action="store_true")
+    parser.add_argument('--score_gate', help='whether to user gate to make predictions', action="store_true")
     parser.add_argument('--din', help='whether to use target attention in user encoding', action="store_true")
-    parser.add_argument('--score_add', help='whether to add self-atten-based score and target-atten-based score', action="store_true")
-    parser.add_argument('--user_gate', help='whether to use user gate in score adding', action="store_true")
-    parser.add_argument('--emb_gate', help='whether to use emb gate in score adding', action="store_true")
-    parser.add_argument('--param_gate', help='whether to use param gate in score adding', action="store_true")
-
     parser.add_argument('--cross_atten', help='whether to co-use self-atten and target attention in user attention', action="store_true")
+    parser.add_argument('--cross_atten_deep', help='whether to use additive self-atten in cross_atten contidion', action="store_true")
+
+    parser.add_argument('--score_add', help='whether to add self-atten-based score and target-atten-based score', action="store_true")
+
     parser.add_argument('--add_op', help='whether to add self-atten and target-atten embeds to get user encoding', action="store_true")
     parser.add_argument('--mean_op', help='whether to average self-atten and target-atten embeds to get user encoding', action="store_true")
     parser.add_argument('--max_op', help='whether to max_pool self-atten and target-atten embeds to get user encoding', action="store_true")
     parser.add_argument('--atten_op', help='whether to atten self-atten and target-atten embeds to get user encoding', action="store_true")
+
     parser.add_argument('--dnn', help='whether to use dnn to get final user representation', action="store_true")
-    parser.add_argument('--ua_dnn', help='whether to use user attention to get final user representation', action="store_true")
     
     parser.add_argument('--moe', help='whether to use mixture of experts to get final user representation', action="store_true")
     parser.add_argument('--bias', help='whether to use bias net based on moe', action="store_true")
@@ -70,6 +71,8 @@ def parse_args():
     parser.add_argument('--util_reg', action="store_true")
     parser.add_argument('--mem_induction', action="store_true")
     parser.add_argument('--mask_flag', action="store_true")
+
+    parser.add_argument('--co_attention', help='whether to use co-attention to encode user and news', action="store_true")
 
     parser.add_argument('--categ_embed_size', help='category embedding size', type=int, default=16) # make news_size(num_heads*head_size+categ_embed_size*2) can divide by num_heads
     parser.add_argument('--epochs', help='max epoch', type=int, default=10)
@@ -116,10 +119,10 @@ class HeyDataset():
         train_user_path = 'data/heybox/train/behaviors_train.tsv'
         test_user_path = 'data/heybox/test/behaviors_test.tsv'
         news_path = 'data/heybox/news.tsv'
-        news_ctr_path = 'data/heybox/news_ctr.npz'
+        # news_ctr_path = 'data/heybox/news_ctr.npz'
 
-        news_ctr_data = np.load(news_ctr_path, allow_pickle=True)
-        self.news_ctr_origin = news_ctr_data['news_ctr'].tolist()
+        # news_ctr_data = np.load(news_ctr_path, allow_pickle=True)
+        # self.news_ctr_origin = news_ctr_data['news_ctr'].tolist()
 
         with open(news_path, 'r', encoding='utf-8') as f:
             newsfile = f.readlines()
@@ -152,17 +155,16 @@ class HeyDataset():
             self.newsidenx[id] = nid
             nid += 1
 
-        self.news_ctr = {0:{'click':0, 'view':0, 'ctr':0.0, 'ctr_bin': 0}}
-        for news in self.news_ctr_origin.keys():
-            if news in self.newsidenx:
-                news_index = self.newsidenx[news]
-                self.news_ctr[news_index] = self.news_ctr_origin[news]
+        # self.news_ctr = {0:{'click':0, 'view':0, 'ctr':0.0, 'ctr_bin': 0}}
+        # for news in self.news_ctr_origin.keys():
+        #     if news in self.newsidenx:
+        #         news_index = self.newsidenx[news]
+        #         self.news_ctr[news_index] = self.news_ctr_origin[news]
 
         self.word_dict = {'PADDING': 0}
         self.categ_dict = {'PADDING': 0}
         self.post_user_dict = {'PADDING': 0}
         self.news_features = [[0] * (self.title_size + 3)]
-        self.news_ctr_value = [0.0,]
         self.words = 0
         for newid in self.news:
             title = []
@@ -187,14 +189,16 @@ class HeyDataset():
                 title = title + [0] * (self.title_size - len(title))
             title.append(self.post_user_dict[features[0]])
             title.append(self.categ_dict[features[1]])
-            if newid not in self.news_ctr_origin:
-                title.append(0)
-                self.news_features.append(title)
-                self.news_ctr_value.append(0.0)
-            else:
-                title.append(self.news_ctr_origin[newid]['ctr_bin'])
-                self.news_features.append(title)
-                self.news_ctr_value.append(self.news_ctr_origin[newid]['ctr'])
+            self.news_features.append(title)
+
+            # if newid not in self.news_ctr_origin:
+            #     title.append(0)
+            #     self.news_features.append(title)
+            #     self.news_ctr_value.append(0.0)
+            # else:
+            #     title.append(self.news_ctr_origin[newid]['ctr_bin'])
+            #     self.news_features.append(title)
+            #     self.news_ctr_value.append(self.news_ctr_origin[newid]['ctr'])
 
         print("num of posts: {}".format(len(self.news)))
         print("ave words in post title: {}".format(self.words/len(self.news)))
@@ -207,8 +211,12 @@ class HeyDataset():
         self.train_his_len = []
         self.train_user_id = []
         self.users = {}
+        self.clicks = 0
+        self.impressions = 0
+        self.news_ctr = {0:{'click':0, 'view':0, 'ctr':0.0, 'ctr_bin': 0}}
 
         for line in trainuserfile:
+            self.impressions += 1
             linesplit = line.split('\t')
             userid = linesplit[1].strip()
             if userid not in self.users:
@@ -224,11 +232,21 @@ class HeyDataset():
             nnew = []
             for candidate in linesplit[4].split(' '):
                 candidate = candidate.strip().split('-')
+
+                if self.newsidenx[candidate[0]] not in self.news_ctr:
+                    self.news_ctr[self.newsidenx[candidate[0]]] = {'click':0}
                 if (candidate[1] == '1'):
                     pnew.append(self.newsidenx[candidate[0]])
+                    self.clicks += 1
+                    self.news_ctr[self.newsidenx[candidate[0]]]['click'] += 1
                 else:
                     nnew.append(self.newsidenx[candidate[0]])
+
             if len(nnew)==0:
+                self.impressions -= 1
+                self.clicks -= len(pnew)
+                for p in pnew:
+                    self.news_ctr[p]['click'] -= 1
                 continue
 
             for pos in pnew:
@@ -253,6 +271,7 @@ class HeyDataset():
         self.eval_user_id = []
 
         for line in testuserfile:
+            self.impressions += 1
             linesplit = line.split('\t')
             userid = linesplit[1].strip()
             if userid not in self.users:
@@ -268,10 +287,21 @@ class HeyDataset():
             temp_label = []
             for candidate in linesplit[4].split(' '):
                 candidate = candidate.strip().split('-')
+                if self.newsidenx[candidate[0]] not in self.news_ctr:
+                    self.news_ctr[self.newsidenx[candidate[0]]] = {'click':0}
                 temp.append(self.newsidenx[candidate[0]])
                 temp_label.append(int(candidate[1]))
 
+                if (candidate[1] == '1'):
+                    self.clicks += 1
+                    self.news_ctr[self.newsidenx[candidate[0]]]['click'] += 1
+                    
+
             if len(temp_label)<2:
+                self.impressions -= 1
+                if len(temp_label)>0 and temp_label[0] == 1:
+                    self.clicks -= 1
+                    self.news_ctr[temp[0]]['click'] -= 1
                 continue
             
             self.eval_candidate.append(temp)
@@ -279,6 +309,82 @@ class HeyDataset():
             self.eval_user_his.append(clickids)
             self.eval_click_len.append(click_len)
             self.eval_user_id.append(self.users[userid])
+
+        ctr_00 = 0
+        ctr_00_01 = 0
+        ctr_01_02 = 0
+        ctr_02_03 = 0
+        ctr_03_04 = 0
+        ctr_04_05 = 0
+        ctr_05_06 = 0
+        ctr_06_07 = 0
+        ctr_07_08 = 0
+        ctr_08_09 = 0
+        ctr_09_10 = 0
+        valid_click_num = 0
+        for news in self.news_ctr.keys():
+            self.news_ctr[news]['view'] = self.impressions
+            valid_click_num += self.news_ctr[news]['click']
+            self.news_ctr[news]['ctr'] = self.news_ctr[news]['click'] / self.news_ctr[news]['view']
+
+            ctr = self.news_ctr[news]['ctr']
+            assert ctr<=1.0
+            if ctr == 0.0:
+                ctr_00 += 1
+                self.news_ctr[news]['ctr_bin'] = 0
+            elif ctr > 0.0 and ctr <= 0.1:
+                ctr_00_01 += 1
+                self.news_ctr[news]['ctr_bin'] = 1
+            elif ctr > 0.1 and ctr <= 0.2:
+                ctr_01_02 += 1
+                self.news_ctr[news]['ctr_bin'] = 2
+            elif ctr > 0.2 and ctr <= 0.3:
+                ctr_02_03 += 1
+                self.news_ctr[news]['ctr_bin'] = 3
+            elif ctr > 0.3 and ctr <= 0.4:
+                ctr_03_04 += 1
+                self.news_ctr[news]['ctr_bin'] = 4
+            elif ctr > 0.4 and ctr <= 0.5:
+                ctr_04_05 += 1
+                self.news_ctr[news]['ctr_bin'] = 5
+            elif ctr > 0.5 and ctr <= 0.6:
+                ctr_05_06 += 1
+                self.news_ctr[news]['ctr_bin'] = 6
+            elif ctr > 0.6 and ctr <= 0.7:
+                ctr_06_07 += 1
+                self.news_ctr[news]['ctr_bin'] = 7
+            elif ctr > 0.7 and ctr <= 0.8:
+                ctr_07_08 += 1
+                self.news_ctr[news]['ctr_bin'] = 8
+            elif ctr > 0.8 and ctr <= 0.9:
+                ctr_08_09 += 1
+                self.news_ctr[news]['ctr_bin'] = 9
+            elif ctr > 0.9 and ctr <= 1.0:
+                ctr_09_10 += 1
+                self.news_ctr[news]['ctr_bin'] = 10
+        # print('ctr_00:', ctr_00)
+        # print('ctr_00_01:', ctr_00_01)
+        # print('ctr_01_02:', ctr_01_02)
+        # print('ctr_02_03:', ctr_02_03)
+        # print('ctr_03_04:', ctr_03_04)
+        # print('ctr_04_05:', ctr_04_05)
+        # print('ctr_05_06:', ctr_05_06)
+        # print('ctr_06_07:', ctr_06_07)
+        # print('ctr_07_08:', ctr_07_08)
+        # print('ctr_08_09:', ctr_08_09)
+        # print('ctr_09_10:', ctr_09_10)
+
+        assert valid_click_num == self.clicks
+
+        self.news_ctr_value = [0.0,]
+        for i, newid in enumerate(self.news.keys()):
+            nid = self.newsidenx[newid]
+            if nid not in self.news_ctr:
+                self.news_features[i+1].append(0)
+                self.news_ctr_value.append(0.0)
+            else:
+                self.news_features[i+1].append(self.news_ctr[nid]['ctr_bin'])
+                self.news_ctr_value.append(self.news_ctr[nid]['ctr'])
 
         self.train_candidate=np.array(self.train_candidate,dtype='int32')
         self.train_label=np.array(self.train_label,dtype='int32')
@@ -288,7 +394,9 @@ class HeyDataset():
         self.news_features = np.array(self.news_features)
         self.news_ctr_value = np.array(self.news_ctr_value)
 
-        print("users: {}, train samples: {}, test samples: {}".format(len(self.users), len(self.train_candidate), len(self.eval_candidate)))
+
+        print("users: {}, impressions: {}, clicks: {}".format(len(self.users), self.impressions, self.clicks))
+        print("train samples: {}, test samples: {}".format(len(self.train_candidate), len(self.eval_candidate)))
 
     def generate_batch_train_data(self):
         idlist = np.arange(len(self.train_label))
@@ -428,15 +536,13 @@ class MINDDataset():
             for candidate in linesplit[4].split(' '):
                 candidate = candidate.strip().split('-')
                 if self.newsidenx[candidate[0]] not in self.news_ctr:
-                    self.news_ctr[self.newsidenx[candidate[0]]] = {'click':0, 'view':0}
+                    self.news_ctr[self.newsidenx[candidate[0]]] = {'click':0}
                 if (candidate[1] == '1'):
                     pnew.append(self.newsidenx[candidate[0]])
                     self.clicks += 1
                     self.news_ctr[self.newsidenx[candidate[0]]]['click'] += 1
-                    self.news_ctr[self.newsidenx[candidate[0]]]['view'] += 1
                 else:
                     nnew.append(self.newsidenx[candidate[0]])
-                    self.news_ctr[self.newsidenx[candidate[0]]]['view'] += 1
 
             for pos in pnew:
 
@@ -478,16 +584,13 @@ class MINDDataset():
             for candidate in linesplit[4].split(' '):
                 candidate = candidate.strip().split('-')
                 if self.newsidenx[candidate[0]] not in self.news_ctr:
-                    self.news_ctr[self.newsidenx[candidate[0]]] = {'click':0, 'view':0}
+                    self.news_ctr[self.newsidenx[candidate[0]]] = {'click':0}
 
                 temp.append(self.newsidenx[candidate[0]])
                 temp_label.append(int(candidate[1]))
                 if (candidate[1] == '1'):
                     self.clicks += 1
                     self.news_ctr[self.newsidenx[candidate[0]]]['click'] += 1
-                    self.news_ctr[self.newsidenx[candidate[0]]]['view'] += 1
-                else:
-                    self.news_ctr[self.newsidenx[candidate[0]]]['view'] += 1
 
             self.eval_candidate.append(temp)
             self.eval_label.append(temp_label)
@@ -506,13 +609,14 @@ class MINDDataset():
         ctr_07_08 = 0
         ctr_08_09 = 0
         ctr_09_10 = 0
+        valid_click_num = 0
         for news in self.news_ctr.keys():
-            if self.news_ctr[news]['view'] == 0:
-                self.news_ctr[news]['ctr'] = 0.0
-            else:
-                self.news_ctr[news]['ctr'] = self.news_ctr[news]['click'] / self.news_ctr[news]['view']
+            self.news_ctr[news]['view'] = self.impressions
+            valid_click_num += self.news_ctr[news]['click']
+            self.news_ctr[news]['ctr'] = self.news_ctr[news]['click'] / self.news_ctr[news]['view']
 
             ctr = self.news_ctr[news]['ctr']
+            assert ctr<=1.0
             if ctr == 0.0:
                 ctr_00 += 1
                 self.news_ctr[news]['ctr_bin'] = 0
@@ -557,6 +661,8 @@ class MINDDataset():
         # print('ctr_07_08:', ctr_07_08)
         # print('ctr_08_09:', ctr_08_09)
         # print('ctr_09_10:', ctr_09_10)
+
+        assert valid_click_num == self.clicks
 
         self.news_ctr_value = [0.0,]
         for i, newid in enumerate(self.news.keys()):

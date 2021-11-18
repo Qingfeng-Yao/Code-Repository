@@ -1,0 +1,31 @@
+### deep hash
+- 环境配置
+    - `python3.6`; `deduplicate/requirements.txt`
+        - 可设置conda环境(deephash)
+- 数据集
+	- heybox
+		- raw_data: 文件格式为`content_id/content_id.json`; 内容格式(json文件, 字符串格式, unicode编码)为`content`字段为文本html,`title`字段为文本标题, `timestamp`字段为时间戳; 同一目录下如果有多个文件则同为重复文章, 同一目录下只有单一文章为不重复
+			- `raw_data`: 目录下是认为重复的文档集合(即ground truth)，每一个文档集合用一个文件夹表示(名字为其中某篇文档的id)。考虑到某一篇文档只能属于一个目录，所以剔除37317269.json
+			37159769.json和37191808.json三篇从属于多个目录的文档，使其只从属于一个目录。处理后共`164`类，共`264`篇json文档，平均文本长度为`459.08`(包括题目和正文)
+			- `chinese_data`: 经`raw_data_process.py`处理后得到，与raw_data目录结构相同，不过将文档内容以中文显示(包括题目和正文)
+			- `ground_truth`: 经`get_ground_truth_data.py`处理后得到。将上述中文目录下的文本按照文件夹写入一个txt文件中，每一个txt文本表示一个类，即共有164个txt文本。每一个txt文本内容为对应目下的文档id以及文档内容
+			- `input_data`: 经`get_input_data.py`处理后得到。将上述raw_data目录下的所有文本组织成字典的格式，key为文本id，value为字典，包括标题和正文，最后生成json文件`data.json`作为模型的输入，文本包括标题和正文
+- 模型
+	- tfidf-lsa
+	- simhash
+	- DHN
+- 指标
+	- precision
+	- recall
+	- f1-score
+	- 计算方法：对于每一个文档执行一遍去重查询，与提供的数据标准结果进行比较计算，最后求平均值
+	- 除了指标输出，同时也输出与ground truth不一样的结果以供调试
+- 相关执行命令
+	- `heybox`
+		- `tfidf-lsa`: python3 train_tfidf_lsa.py 
+		- `simhash`: python3
+- 参考论文
+    - 2016 | AAAI | Deep Hashing Network for Efficient Similarity Retrieval | Tsinghua
+- 参考资料
+    - [1e0ng/simhash](https://github.com/1e0ng/simhash)
+    - [thulab/DeepHash](https://github.com/thulab/DeepHash)
