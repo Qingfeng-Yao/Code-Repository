@@ -28,61 +28,27 @@
             - 帖子ctr统计同新闻
 - 模型
     - NRMS
-    - (+bert)
-    - (+mimn)
-    - (+co_attention)
-    - +din
-        - +cross_atten
-        - +cross_atten_deep
     - +ctr
-        - +din
-        - +score_gate
-    - 特征融合
-        - 标量值融合
-            - +score_add
+    - +din
+    - 特征物理融合
         - 池化
-            - +add
-            - +mean
-            - +max
-            - +atten
         - 连接
-            - +dnn
-            - +moe
-                - +bias
-            - +mvke
+    - (+co_attention)
 - 指标
     - AUC
     - MRR: Mean Reciprocal Rank(把标准答案在被评价系统给出结果中的排序取倒数作为它的准确度，再对所有的问题取平均)
     - nDCG(@5 or @10): Normalized Discounted Cumulative Gain(先计算增益，再计算折算因子，最后求和归一化)
 - 相关执行命令
-    - `MIND`:
-        - `NRMS`: python3 main.py --pretrained_embeddings glove; `auc: 65.82, mrr: 30.76, ndcg5: 33.76, ndcg10: 40.23`
-        - `NRMS+din`: python3 main.py --pretrained_embeddings glove --din; `auc: 65.98, mrr: 31.27, ndcg5: 34.38, ndcg10: 40.69`
-        - NRMS+din+cross_atten: python3 main.py --pretrained_embeddings glove --cross_atten; auc: 65.96, mrr: 30.94, ndcg5: 33.93, ndcg10: 40.39
-        - NRMS+din+cross_atten_deep: python3 main.py --pretrained_embeddings glove --cross_atten --cross_atten_deep; auc: 65.71, mrr: 30.77, ndcg5: 33.68, ndcg10: 40.18
-        - NRMS+ctr: python3 main.py --pretrained_embeddings glove --use_ctr; auc: 65.79, mrr: 30.75, ndcg5: 33.76, ndcg10: 40.22
-        - `NRMS+ctr+score_gate`: python3 main.py --pretrained_embeddings glove --use_ctr --score_gate; `auc: 66.09, mrr: 30.97, ndcg5: 34.03, ndcg10: 40.48`
-        - NRMS+ctr+din: python3 main.py --pretrained_embeddings glove --use_ctr --din; auc: 64.84, mrr: 30.44, ndcg5: 33.11, ndcg10: 39.77
-
-        - `NRMS+add`: python3 main.py --pretrained_embeddings glove --din --use_ctr --add_op; `auc: 66.31, mrr: 31.30, ndcg5: 34.41, ndcg10: 40.80`
-        - `NRMS+mean`: python3 main.py --pretrained_embeddings glove --din --use_ctr --mean_op; `auc: 66.25, mrr: 31.30, ndcg5: 34.44, ndcg10: 40.79`
-        - `NRMS+max`: python3 main.py --pretrained_embeddings glove --din --use_ctr --max_op; auc: `65.95, mrr: 31.13, ndcg5: 34.21, ndcg10: 40.61`
-        - `NRMS+atten`: python3 main.py --pretrained_embeddings glove --din --use_ctr --atten_op; `auc: 66.26, mrr: 31.31, ndcg5: 34.40, ndcg10: 40.82`
-
-        - `NRMS+score_add`: python3 main.py --pretrained_embeddings glove --din --use_ctr --score_add; `auc: 65.99, mrr: 31.04, ndcg5: 34.13, ndcg10: 40.52`
-
-        - `NRMS+dnn`: python3 main.py --pretrained_embeddings glove --din --use_ctr --dnn; `auc: 66.21, mrr: 31.43, ndcg5: 34.56, ndcg10: 40.93`
-        - `NRMS+moe`: python3 main.py --pretrained_embeddings glove --din --use_ctr --moe; `auc: 66.68, mrr: 31.60, ndcg5: 34.70, ndcg10: 41.08`
-        - NRMS+bias: python3 main.py --pretrained_embeddings glove --din --use_ctr --moe --bias; auc: 66.19, mrr: 31.32, ndcg5: 34.37, ndcg10: 40.75
-        - NRMS+mvke: python3 main.py --pretrained_embeddings glove --din --use_ctr --mvke; auc: 65.70, mrr: 31.08, ndcg5: 34.05, ndcg10: 40.47
-
-        - NRMS+mimn: python3 main.py --pretrained_embeddings glove --mimn; auc: 65.24, mrr: 30.71, ndcg5: 33.79, ndcg10: 40.14
-        - NRMS+bert: python3 main.py --word_embed_size 768 --pretrained_embeddings bert --batch_size 4;
-    - `heybox`:
-        - `NRMS`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-5 --epochs 10; `auc: 65.99, mrr: 46.51, ndcg5: 52.46, ndcg10: 59.26`
-        - `NRMS+din`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-5 --epochs 10 --din; `auc: 66.19, mrr: 46.77, ndcg5: 52.71, ndcg10: 59.45`
-        - `NRMS+ctr+score_gate`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-5 --epochs 10 --use_ctr --score_gate; `auc: 66.16, mrr: 46.58, ndcg5: 52.60, ndcg10: 59.31`
-        - `NRMS+moe`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 5e-5 --epochs 10 --din --use_ctr --moe; `auc: 66.11, mrr: 46.73, ndcg5: 52.66, ndcg10: 59.42`
+    - `MIND`: 均考虑score_gate，即最后计算分数时同时考虑匹配分数和候选新闻的ctr值
+        - `NRMS`: python3 main.py --pretrained_embeddings glove --score_gate; `auc: 66.25, mrr: 31.67, ndcg5: 34.77, ndcg10: 41.09`
+        - `NRMS+ctr`: python3 main.py --pretrained_embeddings glove --use_ctr --score_gate; `auc: 66.45, mrr: 31.83, ndcg5: 34.95, ndcg10: 41.25`
+        - `NRMS+din`: python3 main.py --pretrained_embeddings glove --din --score_gate; `auc: 66.67, mrr: 31.84, ndcg5: 34.92, ndcg10: 41.36`
+        - `NRMS+atten`: python3 main.py --pretrained_embeddings glove --din --use_ctr --atten_op; `auc: 66.66, mrr: 31.87, ndcg5: 35.05, ndcg10: 41.42`
+    - `heybox`: 5 epoch
+        - `NRMS`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 1e-5 --score_gate; `auc: 64.88, mrr: 45.77, ndcg5: 51.44, ndcg10: 58.65`
+        - `NRMS+ctr`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 1e-5 --use_ctr --score_gate; `auc: 64.91, mrr: 45.72, ndcg5: 51.45, ndcg10: 58.62`
+        - `NRMS+din`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 1e-5 --din --score_gate; `auc: 65.59, mrr: 46.17, ndcg5: 52.06, ndcg10: 58.99`
+        - `NRMS+atten`: python3 main.py --dataset heybox --title_size 10 --his_size 50 --neg_number 10 --batch_size 512 --lr 1e-5 --din --use_ctr --atten_op; `auc: 65.27, mrr: 46.23, ndcg5: 51.89, ndcg10: 59.01`
         
 
 - 参考论文

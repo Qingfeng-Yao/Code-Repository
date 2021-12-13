@@ -35,9 +35,10 @@ def parse_args():
     parser.add_argument('--use_multi_gpu', help='whether to use multi gpus', action="store_true")
     parser.add_argument('--modelname', type=str, default='nrms')
 
-    parser.add_argument('--seed', help='set random seed', type=int, default=1)
+    parser.add_argument('--seed', help='set random seed', type=int, default=123)
 
     parser.add_argument('--use_ctr', help='whether to use item ctr to get user representation', action="store_true")
+    parser.add_argument('--merge_ctr_tar', help='whether to cancat click news content, click news ctr and cand news content to feed additive attention network', action="store_true")
     parser.add_argument('--score_gate', help='whether to user gate to make predictions', action="store_true")
     parser.add_argument('--din', help='whether to use target attention in user encoding', action="store_true")
     parser.add_argument('--cross_atten', help='whether to co-use self-atten and target attention in user attention', action="store_true")
@@ -56,6 +57,7 @@ def parse_args():
     parser.add_argument('--bias', help='whether to use bias net based on moe', action="store_true")
     parser.add_argument('--num_experts', help='number of erperts to use', type=int, default=2)
     parser.add_argument('--mvke', help='whether to use mixture of virtual kernel experts to get final user representation', action="store_true")
+    parser.add_argument('--cross_gate', help='whether to use gated cross-selective network to get final user representation', action="store_true")
     parser.add_argument('--dataset', help='path to file: MIND | heybox', type=str, default='MIND')
 
     parser.add_argument('--word_embed_size', help='word embedding size, if use bert, emb_size=768', type=int, default=300) 

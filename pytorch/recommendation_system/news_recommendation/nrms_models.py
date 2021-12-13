@@ -70,25 +70,34 @@ class AdditiveAttention(nn.Module):
         self.att_fc1 = nn.Linear(d_h, hidden_size)
         self.att_fc2 = nn.Linear(hidden_size, 1)
 
-    def forward(self, x, mask=None, query=None, is_pooling=True):
+    def forward(self, x, mask=None, query=None, need_dim=1, is_pooling=True, re_w=False):
         if query is not None:
             e = self.att_fc1(query)
             e = nn.Tanh()(e)
             alpha = self.att_fc2(e)
-            attention_weight = F.softmax(alpha, 1)
+            if mask is not None:
+                alpha += mask
+            attention_weight = F.softmax(alpha, need_dim)
         else:
             e = self.att_fc1(x)
             e = nn.Tanh()(e)
             alpha = self.att_fc2(e)
             if mask is not None:
                 alpha += mask
-            attention_weight = F.softmax(alpha, 1)
+            attention_weight = F.softmax(alpha, need_dim)
             
         if is_pooling:
-            output = torch.sum(attention_weight * x, 1)
+            if need_dim != 1:
+                output = torch.matmul(torch.squeeze(attention_weight, -1), x)
+            else:
+                output = torch.sum(attention_weight * x, need_dim)
         else:
             output = attention_weight * x
-        return output
+
+        if re_w:
+            return output, attention_weight
+        else:
+            return output
 
 class TitleLayer(nn.Module):
     def __init__(self, word_dict, embeddings_matrix, args):
@@ -182,6 +191,7 @@ class UserEncoder(nn.Module):
         self.target_att = MultiHeadAttention(args.num_heads, self.newssize // args.num_heads, self.newssize)
         self.selfaddatt = AdditiveAttention(self.newssize, args.medialayer)
         self.ctraddatt = AdditiveAttention(self.newssize+args.categ_embed_size, args.medialayer)
+        self.mergeaddatt = AdditiveAttention(2*self.newssize+args.categ_embed_size, args.medialayer)
         
         self.newscncoder = newscncoder
         self.his_size = args.his_size
@@ -194,6 +204,7 @@ class UserEncoder(nn.Module):
         self.max_op = args.max_op
         self.atten_op = args.atten_op
         self.mvke = args.mvke
+        self.cross_gate = args.cross_gate
 
         self.dnn = args.dnn 
         self.moe = args.moe
@@ -209,6 +220,11 @@ class UserEncoder(nn.Module):
         if self.mimn_flag: # memory_vector_dim=newssize
             self.mimn_net = MIMNCell(args.gpu, args.controller_units, args.memory_size, self.newssize, args.read_head_num, args.write_head_num, self.newssize,
                  output_dim=None, clip_value=20, shift_range=1, batch_size=args.batch_size, mem_induction=args.mem_induction, util_reg=args.util_reg, sharp_value=2.)
+
+        self.use_ctr = args.use_ctr
+        if self.use_ctr:
+            self.tar_ctr_dense = nn.Linear(2*self.newssize+args.categ_embed_size, 1)
+        self.merge_ctr_tar = args.merge_ctr_tar
 
     # for mimn net
     def clear_mask_state(self, state, begin_state, mask, t, batch_size_):
@@ -272,10 +288,10 @@ class UserEncoder(nn.Module):
             selfattn_output = self.multiatt(click_embed, mask1, click_embed, click_embed) # batch_size, his_size, num_heads*head_size+2*categ_embed_size
             selfattn_output = self.dropout2(selfattn_output)
 
-            if not (self.add_op or self.mean_op or self.max_op or self.atten_op or self.dnn or self.score_add or self.moe or self.mvke):
+            if not (self.add_op or self.mean_op or self.max_op or self.atten_op or self.dnn or self.score_add or self.moe or self.mvke or self.cross_gate):
                 if target is not None:
                     if self.cross_atten:
-                        _, ta_w = self.target_att(click_embed, mask1, target, click_embed, no_multi_head=True, return_w=True)
+                        _, ta_w = self.target_att(click_embed, mask1, target, click_embed, no_multi_head=True, return_w=True) # batch_size, negnums+1, his_size
                         if self.cross_atten_deep:
                             mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
                             output = self.selfaddatt(selfattn_output, mask2, is_pooling=False) 
@@ -283,20 +299,38 @@ class UserEncoder(nn.Module):
                         else:
                             output = torch.matmul(ta_w, selfattn_output)
                     elif use_ctr:
-                        _, ta_w = self.target_att(click_embed, mask1, target, click_embed, no_multi_head=True, return_w=True)
-                        output = self.ctraddatt(selfattn_output, query=torch.cat([click_ctr_embed, selfattn_output], dim=2), is_pooling=False)
-                        output = torch.matmul(ta_w, output)
+                        _, ta_w = self.target_att(click_embed, mask1, target, click_embed, no_multi_head=True, return_w=True) # batch_size, negnums+1, his_size
+                        b_size, cand_num, his_len = ta_w.size(0), ta_w.size(1), ta_w.size(2)
+                        mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
+                        _, ctr_w = self.ctraddatt(selfattn_output, mask=mask2, query=torch.cat([click_ctr_embed, selfattn_output], dim=2), re_w=True) # batch_size, his_size, 1
+                        ctr_w = torch.unsqueeze(torch.squeeze(ctr_w, 2), 1).expand(b_size, cand_num, his_len)
+
+                        ctr_emb_dim = click_ctr_embed.size(-1)
+                        content_emb_dim = selfattn_output.size(-1)
+                        target_emb_dim = target.size(-1)
+                        click_ctr_embed_to_concat = torch.unsqueeze(click_ctr_embed, 1).expand(b_size, cand_num, his_len, ctr_emb_dim)
+                        selfattn_output_to_concat = torch.unsqueeze(selfattn_output, 1).expand(b_size, cand_num, his_len, content_emb_dim)
+                        target_to_concat = torch.unsqueeze(target, 2).expand(b_size, cand_num, his_len, target_emb_dim)
+
+                        if self.merge_ctr_tar:
+                            mask3 = torch.unsqueeze(torch.unsqueeze(mask, 2), 1) # batch_size, 1, his_size, 1
+                            output = self.mergeaddatt(selfattn_output, mask=mask3, query=torch.cat([click_ctr_embed_to_concat, selfattn_output_to_concat, target_to_concat], dim=3), need_dim=2)
+                        else:
+                            eta = torch.squeeze(torch.sigmoid(self.tar_ctr_dense(torch.cat([click_ctr_embed_to_concat, selfattn_output_to_concat, target_to_concat], dim=3))), 3)
+                            merge_w = eta*ta_w + (1-eta)*ctr_w
+                            output = torch.matmul(merge_w, selfattn_output)
                     else:
-                        output = self.target_att(click_embed, mask1, target, click_embed)
+                        output = self.target_att(click_embed, mask1, target, click_embed) # batch_size, negnums+1, num_heads*head_size+2*categ_embed_size
                 elif use_ctr:
-                    output = self.ctraddatt(selfattn_output, query=torch.cat([click_ctr_embed, selfattn_output], dim=2)) # batch_size, num_heads*head_size+2*categ_embed_size
+                    mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
+                    output = self.ctraddatt(selfattn_output, mask=mask2, query=torch.cat([selfattn_output, click_ctr_embed], dim=2)) # batch_size, num_heads*head_size+2*categ_embed_size
                 else:
                     mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
                     output = self.selfaddatt(selfattn_output, mask2) # batch_size, num_heads*head_size+2*categ_embed_size
             else:
                 output1 = self.target_att(click_embed, mask1, target, click_embed)
- 
-                output2 = self.ctraddatt(selfattn_output, query=torch.cat([click_ctr_embed, selfattn_output], dim=2))
+                mask2 = torch.unsqueeze(mask, 2) # batch_size, his_size, 1
+                output2 = self.ctraddatt(selfattn_output, mask=mask2, query=torch.cat([selfattn_output, click_ctr_embed], dim=2))
 
                 output = (output1, output2)
 
@@ -341,8 +375,7 @@ class nrms(nn.Module):
 
         self.use_ctr = args.use_ctr
         self.score_gate = args.score_gate
-        if self.use_ctr:
-            self.user_ctr_dense = nn.Linear(self.newssize, 1)
+        self.user_ctr_dense = nn.Linear(self.newssize, 1)
 
         self.din = args.din # target attention
         self.cross_atten = args.cross_atten 
@@ -386,6 +419,11 @@ class nrms(nn.Module):
                 expert_net_2 = nn.Linear(args.medialayer, self.newssize).to(self.device)
                 self.expert_nets.append([expert_net_1, expert_net_2])
             self.gate_net = MultiHeadAttention(args.num_heads, self.newssize // args.num_heads, self.newssize)
+
+        self.cross_gate = args.cross_gate
+        if self.cross_gate:
+            self.cross_gate_dense = nn.Linear(self.newssize*2, 1)
+
 
         self.mimn_flag = args.mimn
         self.util_reg = args.util_reg
@@ -504,7 +542,8 @@ class nrms(nn.Module):
                 score_main = torch.squeeze(torch.diagonal(score_main, dim1=-2, dim2=-1))
                 score_bias = torch.squeeze(torch.diagonal(score_bias, dim1=-2, dim2=-1))
                 candidate_news_ctr = torch.squeeze(candidate_news_ctr)
-                score = score_main + score_bias + candidate_news_ctr
+                eta = torch.squeeze(torch.sigmoid(self.final_score_gate(user_final_embed)))
+                score =  (1-eta)*(score_main + score_bias) + eta*candidate_news_ctr
             else:
                 score = torch.matmul(news_embed, user_final_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
                 score_match = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1))
@@ -537,23 +576,36 @@ class nrms(nn.Module):
             candidate_news_ctr = torch.squeeze(candidate_news_ctr)
             eta = torch.squeeze(torch.sigmoid(self.final_score_gate(user_final_embed)))
             score = (1-eta)*score_match+eta*candidate_news_ctr
+        elif self.cross_gate:
+            user_target_embed, user_self_embed = user_embed
+            b_size, l_size, e_size = user_self_embed.size(0), user_target_embed.size(1), user_self_embed.size(1)
+            user_self_embed = torch.unsqueeze(user_self_embed, 1).expand(b_size, l_size, e_size)
+            user_concat_embed = torch.cat([user_target_embed, user_self_embed], dim=2)
+            cross_gate_param = torch.sigmoid(self.cross_gate_dense(user_concat_embed))
+            user_final_embed = cross_gate_param * user_self_embed
+            score = torch.matmul(news_embed, user_final_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
+            score_match = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1)) # batch_size, negnums+1
+            candidate_news_ctr = torch.squeeze(candidate_news_ctr)
+            eta = torch.squeeze(torch.sigmoid(self.final_score_gate(user_final_embed)))
+            score = (1-eta)*score_match+eta*candidate_news_ctr
         else:
             if len(user_embed.shape) == 3: # batch_size, negnums+1, num_heads*head_size+2*categ_embed_size
-                score = torch.matmul(news_embed, user_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
-                score = torch.squeeze(torch.diagonal(score, dim1=-2, dim2=-1)) # batch_size, negnums+1
-            else:
-                if self.use_ctr:
-                    user_embed = torch.unsqueeze(user_embed, 2) # batch_size, num_heads*head_size+2*categ_embed_size, 1
-                    if self.score_gate:
-                        score_match = torch.squeeze(torch.matmul(news_embed, user_embed)) # batch_size, negnums+1
-                        candidate_news_ctr = torch.squeeze(candidate_news_ctr)
-                        eta = torch.squeeze(torch.sigmoid(self.user_ctr_dense(torch.squeeze(user_embed, 2))), 0)
-                        score = (1-eta)*score_match+eta*candidate_news_ctr
-                    else:
-                        score = torch.squeeze(torch.matmul(news_embed, user_embed)) # batch_size, negnums+1
-
+                score_raw = torch.matmul(news_embed, user_embed.permute([0, 2, 1])) # batch_size, negnums+1, negnums+1
+                if self.score_gate:
+                    score_match = torch.squeeze(torch.diagonal(score_raw, dim1=-2, dim2=-1)) # batch_size, negnums+1
+                    candidate_news_ctr = torch.squeeze(candidate_news_ctr)
+                    eta = torch.squeeze(torch.sigmoid(self.user_ctr_dense(user_embed)))
+                    score = (1-eta)*score_match+eta*candidate_news_ctr
                 else:
-                    user_embed = torch.unsqueeze(user_embed, 2) # batch_size, num_heads*head_size+2*categ_embed_size, 1
+                    score = torch.squeeze(torch.diagonal(score_raw, dim1=-2, dim2=-1)) # batch_size, negnums+1
+            else:
+                user_embed = torch.unsqueeze(user_embed, 2) # batch_size, num_heads*head_size+2*categ_embed_size, 1
+                if self.score_gate:
+                    score_match = torch.squeeze(torch.matmul(news_embed, user_embed)) # batch_size, negnums+1
+                    candidate_news_ctr = torch.squeeze(candidate_news_ctr)
+                    eta = torch.squeeze(torch.sigmoid(self.user_ctr_dense(torch.squeeze(user_embed, 2))), 0)
+                    score = (1-eta)*score_match+eta*candidate_news_ctr
+                else:
                     score = torch.squeeze(torch.matmul(news_embed, user_embed)) # batch_size, negnums+1
         
 
