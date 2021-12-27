@@ -39,8 +39,8 @@
     - MRR: Mean Reciprocal Rank(把标准答案在被评价系统给出结果中的排序取倒数作为它的准确度，再对所有的问题取平均)
     - nDCG(@5 or @10): Normalized Discounted Cumulative Gain(先计算增益，再计算折算因子，最后求和归一化)
 - 相关执行命令
-    - `MIND`: 均考虑score_gate，即最后计算分数时同时考虑匹配分数和候选新闻的ctr值
-        - `NRMS`: python3 main.py --pretrained_embeddings glove --score_gate; `auc: 66.25, mrr: 31.67, ndcg5: 34.77, ndcg10: 41.09`
+    - `MIND`:
+        - `NRMS`: python3 main.py --pretrained_embeddings glove; `auc: 66.25, mrr: 31.67, ndcg5: 34.77, ndcg10: 41.09`
         - `NRMS+ctr`: python3 main.py --pretrained_embeddings glove --use_ctr --score_gate; `auc: 66.45, mrr: 31.83, ndcg5: 34.95, ndcg10: 41.25`
         - `NRMS+din`: python3 main.py --pretrained_embeddings glove --din --score_gate; `auc: 66.67, mrr: 31.84, ndcg5: 34.92, ndcg10: 41.36`
         - `NRMS+atten`: python3 main.py --pretrained_embeddings glove --din --use_ctr --atten_op; `auc: 66.66, mrr: 31.87, ndcg5: 35.05, ndcg10: 41.42`
@@ -60,6 +60,7 @@
 - 参考资料
     - [wuch15/EMNLP2019-NRMS](https://github.com/wuch15/EMNLP2019-NRMS)
     - [wuch15/PLM4NewsRec](https://github.com/wuch15/PLM4NewsRec)
+    - [taoqi98/KIM](https://github.com/taoqi98/KIM)
     - [UIC-Paper/MIMN](https://github.com/UIC-Paper/MIMN)
     
 

@@ -25,10 +25,7 @@
     - [算法工程师面试题整理-数据结构与算法部分](https://github.com/PPshrimpGo/AIinterview)
 
 ### repo
-- 相关库
-    - sklearn
-    - gensim
-    - numpy
+- python中一些常用的库
 - 参考资料
     - [城东-特征工程](https://www.zhihu.com/question/29316149/answer/110159647)
     - [各种文本分类算法集锦，从入门到精通](https://www.heywhale.com/mw/project/5be7e948954d6e0010632ef2/content)
@@ -36,4 +33,9 @@
 ### QA
 - ERROR: Could not find a version that satisfies the requirement yaml
     - 应安装`pyyaml`
+- ImportError: No module named 'cPickle'
+    - python2有cPickle，但是在python3下，是没有cPickle的
+    - 将cPickle改为pickle即可
+- ImportError: cannot import name 'create_T_one_hot'
+    - 交叉import: a,b两个python文件，在a中import b中的类，又在b中import a中的类，就会报这种异常
 

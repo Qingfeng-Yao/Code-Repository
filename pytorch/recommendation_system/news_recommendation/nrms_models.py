@@ -166,15 +166,20 @@ class NewsEncoder(nn.Module):
             self.userlayer = None
         self.title_size = args.title_size
 
+        self.use_topic = args.use_topic
+
     def forward(self, inputs, return_ctr=False): # batch_size*(negnums+1), title_size+3
         title_embed = self.titlelayer(inputs[:, :self.title_size]) # batch_size*(negnums+1), num_heads*head_size
-        if self.userlayer is not None:
-            user_embed = self.userlayer(inputs[:, self.title_size: self.title_size+1]) # batch_size*(negnums+1), categ_embed_size
-            categ_embed = self.categlayer(inputs[:, self.title_size+1:self.title_size+2]) # batch_size*(negnums+1), categ_embed_size
-            news_embed = torch.cat((title_embed, user_embed, categ_embed), 1) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
+        if self.use_topic:
+            news_embed = title_embed
         else:
-            categ_embed = self.categlayer(inputs[:, self.title_size:self.title_size+2]) # batch_size*(negnums+1), 2*categ_embed_size
-            news_embed = torch.cat((title_embed, categ_embed), 1) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
+            if self.userlayer is not None:
+                user_embed = self.userlayer(inputs[:, self.title_size: self.title_size+1]) # batch_size*(negnums+1), categ_embed_size
+                categ_embed = self.categlayer(inputs[:, self.title_size+1:self.title_size+2]) # batch_size*(negnums+1), categ_embed_size
+                news_embed = torch.cat((title_embed, user_embed, categ_embed), 1) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
+            else:
+                categ_embed = self.categlayer(inputs[:, self.title_size:self.title_size+2]) # batch_size*(negnums+1), 2*categ_embed_size
+                news_embed = torch.cat((title_embed, categ_embed), 1) # batch_size*(negnums+1), num_heads*head_size+2*categ_embed_size
         ctr_emb = self.ctrlayer(inputs[:, self.title_size+2:]) # batch_size*(negnums+1), categ_embed_size
         if return_ctr:
             return news_embed, ctr_emb
@@ -186,7 +191,10 @@ class UserEncoder(nn.Module):
         super(UserEncoder, self).__init__()
         self.dropout1 = nn.Dropout(args.droprate)
         self.dropout2 = nn.Dropout(args.droprate)
-        self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
+        if args.use_topic:
+            self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
+        else:
+            self.newssize = args.num_heads * args.head_size
         self.multiatt = MultiHeadAttention(args.num_heads, self.newssize // args.num_heads, self.newssize)
         self.target_att = MultiHeadAttention(args.num_heads, self.newssize // args.num_heads, self.newssize)
         self.selfaddatt = AdditiveAttention(self.newssize, args.medialayer)
@@ -371,6 +379,8 @@ class nrms(nn.Module):
         self.criterion = nn.CrossEntropyLoss()
         self.device = torch.device(args.gpu if torch.cuda.is_available() else 'cpu')
         self.newssize = args.num_heads * args.head_size + args.categ_embed_size * 2
+
+
         self.final_score_gate = nn.Linear(self.newssize, 1)
 
         self.use_ctr = args.use_ctr

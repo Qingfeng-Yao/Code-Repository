@@ -34,8 +34,15 @@ def parse_args():
     parser.add_argument('--gpu', help='set gpu device number 0-3', type=str, default='cuda:0')
     parser.add_argument('--use_multi_gpu', help='whether to use multi gpus', action="store_true")
     parser.add_argument('--modelname', type=str, default='nrms')
-
+    parser.add_argument('--word_embed_size', help='word embedding size, if use bert, emb_size=768', type=int, default=300) 
+    parser.add_argument('--pretrained_embeddings', help='which pretrained embeddings to use: glove | bert, none is not use', type=str, default='none')
     parser.add_argument('--seed', help='set random seed', type=int, default=123)
+    parser.add_argument('--dataset', help='path to file: MIND | heybox', type=str, default='MIND')
+
+    # augment nrms
+    parser.add_argument('--use_topic', help='whether to use topic info to augment news representation', action="store_true")
+
+    
 
     parser.add_argument('--use_ctr', help='whether to use item ctr to get user representation', action="store_true")
     parser.add_argument('--merge_ctr_tar', help='whether to cancat click news content, click news ctr and cand news content to feed additive attention network', action="store_true")
@@ -58,10 +65,6 @@ def parse_args():
     parser.add_argument('--num_experts', help='number of erperts to use', type=int, default=2)
     parser.add_argument('--mvke', help='whether to use mixture of virtual kernel experts to get final user representation', action="store_true")
     parser.add_argument('--cross_gate', help='whether to use gated cross-selective network to get final user representation', action="store_true")
-    parser.add_argument('--dataset', help='path to file: MIND | heybox', type=str, default='MIND')
-
-    parser.add_argument('--word_embed_size', help='word embedding size, if use bert, emb_size=768', type=int, default=300) 
-    parser.add_argument('--pretrained_embeddings', help='which pretrained embeddings to use: glove | bert, none is not use', type=str, default='none')
 
     parser.add_argument('--mimn', help='whether to use mimn to encode user', action="store_true")
     parser.add_argument('--memory_size', type=int, default=5)
