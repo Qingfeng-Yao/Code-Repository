@@ -38,4 +38,9 @@
     - 将cPickle改为pickle即可
 - ImportError: cannot import name 'create_T_one_hot'
     - 交叉import: a,b两个python文件，在a中import b中的类，又在b中import a中的类，就会报这种异常
-
+- SyntaxError: Non-UTF-8 code starting with '\xbb' in file quick_start.py on line 13, but no encoding declared
+    - 当python文件中出现中文
+    - 解决办法为: 在文件首行添加: `# -*- coding:utf-8 -*-/# _*_ coding: utf-8 _*_`
+- TypeError: can't multiply sequence by non-int of type 'float'
+    - `'*'*5.0`
+    - '*'*5则没有问题
