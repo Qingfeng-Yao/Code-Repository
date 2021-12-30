@@ -1,10 +1,13 @@
 ### basic
 - python基础
+- 命令行
+- 深度学习
 - 参考资料
     - [taizilongxu/interview_python](https://github.com/taizilongxu/interview_python)
     - [kenwoodjw/python_interview_question](https://github.com/kenwoodjw/python_interview_question)
     - [chiphuyen/python-is-cool](https://github.com/chiphuyen/python-is-cool)
     - [rougier/numpy-100](https://github.com/rougier/numpy-100)
+    - [动手学深度学习](http://zh.d2l.ai/)
 
 ### leetcode
 - 具体内容
