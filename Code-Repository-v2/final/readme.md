@@ -1,0 +1,11 @@
+- ValueError: multi_class must be in ('ovo', 'ovr')
+	- roc_auc_score(all_labels, all_prob,multi_class=‘ovo’)
+	- Stands for One-vs-rest/Stands for One-vs-one
+- 屏蔽警告
+	- import warnings
+	- warnings.filterwarnings("ignore")
+- 多分类指标：除了acc，其余都有些问题
+- 中文编码
+- bzip2 -d sgns.zhihu.word.bz2
+- RuntimeError: set_storage_offset is not allowed on a Tensor created from .data or .detach().
+	- feature.data.t_(), target.data.sub_(1) 出错
